@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#0e1116" />
+<title>摸鱼盒 · FishBox</title>
+<link rel="manifest" href="./manifest.json" />
+<link rel="icon" href="./icon-192.png" />
+<style>
+  :root {
+    --bg: #0e1116; --panel: #11151c; --panel-2: #161b24;
+    --line: #222a36; --text: #e6edf3; --muted: #8b98a9; --accent: #3e63dd;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  body { padding: max(16px, env(safe-area-inset-top)) 16px calc(24px + env(safe-area-inset-bottom)); max-width: 640px; margin: 0 auto; }
+  header { display: flex; align-items: baseline; gap: 10px; margin-bottom: 4px; }
+  h1 { font-size: 22px; margin: 0; letter-spacing: -0.01em; }
+  header .count { color: var(--muted); font-size: 13px; }
+  .tagline { color: var(--muted); font-size: 13px; margin: 0 0 18px; }
+  .family { margin-top: 22px; }
+  .family-head { display: flex; align-items: baseline; gap: 8px; margin: 0 2px 10px; }
+  .family-head .fname { font-size: 14px; font-weight: 600; }
+  .family-head .fshort { color: var(--muted); font-size: 12px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+  .tile { position: relative; display: block; text-decoration: none; color: inherit;
+    background: var(--panel); border: 1px solid var(--line); border-top: 3px solid var(--line);
+    border-radius: 16px; padding: 16px; transition: transform .08s ease, border-color .15s ease; }
+  .tile:active { transform: scale(.98); }
+  .tile.live:hover { border-color: var(--accent); }
+  .swatch { width: 30px; height: 30px; border-radius: 9px; margin-bottom: 12px; }
+  .tile .name { font-weight: 600; font-size: 15px; margin-bottom: 4px; }
+  .tile .short { color: var(--muted); font-size: 12.5px; }
+  .tile .tags { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 5px; }
+  .tile .tag { font-size: 10.5px; color: var(--muted); background: var(--panel-2);
+    border: 1px solid var(--line); border-radius: 999px; padding: 2px 7px; }
+  .tile.planned { opacity: .5; cursor: default; }
+  .badge { position: absolute; top: 12px; right: 12px; font-size: 10px; color: var(--muted);
+    background: var(--panel-2); border: 1px solid var(--line); border-radius: 999px; padding: 2px 7px; }
+  #install { display: none; margin: 16px 0 4px; border-radius: 12px; padding: 12px 14px;
+    font-size: 13.5px; border: 1px solid var(--line); background: var(--panel); }
+  #install.btn { cursor: pointer; border-color: var(--accent); }
+  #install.notice { color: var(--muted); }
+  #offline-note { color: var(--muted); font-size: 12px; line-height: 1.7; margin-top: 28px;
+    padding-top: 14px; border-top: 1px solid var(--line); }
+</style>
+</head>
+<body>
+<header>
+  <h1>摸鱼盒</h1>
+  <span class="count" id="count"></span>
+</header>
+<p class="tagline">上班摸鱼随手玩 · 装到桌面,离线可玩。</p>
+
+<div id="install"></div>
+<div id="families"></div>
+
+<footer id="offline-note">
+  离线可玩 · Works offline:盒子与内置游戏装好即离线可玩,数据只存在本机。
+</footer>
+
+<script>
+let DATA = { families: [], games: [] };
+
+function tileEl(g) {
+  const live = !!g.url && g.status !== "planned";
+  const el = document.createElement(live ? "a" : "div");
+  el.className = "tile" + (live ? " live" : "") + (g.status === "planned" ? " planned" : "");
+  if (live) el.href = g.url;
+  if (g.color) el.style.borderTopColor = g.color;
+  const tags = (g.tags || []).map((x) => `<span class="tag">${x}</span>`).join("");
+  el.innerHTML =
+    `<div class="swatch" style="background:${g.color || "#222a36"}"></div>` +
+    `<div class="name">${g.name}</div>` +
+    `<div class="short">${g.short || ""}</div>` +
+    (tags ? `<div class="tags">${tags}</div>` : "") +
+    (g.status === "planned" ? `<span class="badge">soon</span>` : "");
+  return el;
+}
+
+function render() {
+  const wrap = document.getElementById("families");
+  wrap.replaceChildren();
+  const shown = DATA.games.filter((g) => g.status !== "archived");
+  DATA.families.forEach((fam) => {
+    const games = shown.filter((g) => g.family === fam.id);
+    if (!games.length) return;
+    const sec = document.createElement("section");
+    sec.className = "family";
+    const head = document.createElement("div");
+    head.className = "family-head";
+    head.innerHTML = `<span class="fname">${fam.name}</span><span class="fshort">${fam.short || ""}</span>`;
+    const grid = document.createElement("div");
+    grid.className = "grid";
+    grid.replaceChildren(...games.map(tileEl));
+    sec.append(head, grid);
+    wrap.appendChild(sec);
+  });
+  const liveCount = shown.filter((g) => g.status !== "planned").length;
+  const planned = shown.length - liveCount;
+  document.getElementById("count").textContent =
+    planned ? `${liveCount} 可玩 · ${planned} 计划中` : `${liveCount} 可玩`;
+}
+
+fetch("./games.json", { cache: "no-cache" })
+  .then((r) => r.json())
+  .then((d) => { DATA = d; render(); })
+  .catch(() => { document.getElementById("families").textContent = "无法加载 games.json"; });
+
+// Install banner: Chrome/Android get a one-tap button; iOS Safari gets a notice.
+let deferredPrompt = null;
+const banner = document.getElementById("install");
+const isStandalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone;
+const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+window.addEventListener("beforeinstallprompt", (e) => {
+  e.preventDefault(); deferredPrompt = e;
+  banner.className = "btn"; banner.style.display = "block";
+  banner.textContent = "⤓  把摸鱼盒装到桌面";
+  banner.onclick = async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt(); await deferredPrompt.userChoice;
+    deferredPrompt = null; banner.style.display = "none";
+  };
+});
+if (!isStandalone && isIOS) {
+  banner.className = "notice"; banner.style.display = "block";
+  banner.textContent = "安装:点分享 → 「添加到主屏幕」。盒子与内置游戏离线可玩。";
+}
+if ("serviceWorker" in navigator) {
+  addEventListener("load", () => navigator.serviceWorker.register("./sw.js").catch(() => {}));
+}
+</script>
+</body>
+</html>

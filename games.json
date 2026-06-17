@@ -1,0 +1,57 @@
+{
+  "families": [
+    {
+      "id": "gridbox",
+      "name": "方块盒",
+      "short": "",
+      "_dev": "一张网格,四种消法;共享 grid-core 引擎。仅开发向,不展示给用户。"
+    }
+  ],
+  "games": [
+    {
+      "id": "match3",
+      "name": "消消乐",
+      "family": "gridbox",
+      "short": "拖动相邻方块交换,凑三连及以上消除,连锁加分。",
+      "url": "./games/match3/",
+      "color": "#e5484d",
+      "tags": ["交换", "三连"]
+    },
+    {
+      "id": "lianliankan",
+      "name": "连连看",
+      "family": "gridbox",
+      "short": "点两颗相同方块,≤2 个拐弯能连起来就消。消光通关。",
+      "url": "./games/lianliankan/",
+      "color": "#46a758",
+      "tags": ["配对", "通路"]
+    },
+    {
+      "id": "g2048",
+      "name": "2048",
+      "family": "gridbox",
+      "short": "方向滑动,同数合并翻倍,凑到 2048。",
+      "color": "#ffb224",
+      "tags": ["合并", "数字"],
+      "status": "planned"
+    },
+    {
+      "id": "tetris",
+      "name": "俄罗斯方块",
+      "family": "gridbox",
+      "short": "落子填满整行消除,别堆到顶。",
+      "color": "#12a594",
+      "tags": ["落子", "填行"],
+      "status": "planned"
+    },
+    {
+      "id": "threes",
+      "name": "合合乐",
+      "family": "gridbox",
+      "short": "相同数字相撞合一,棋盘越挤越考验。",
+      "color": "#8e4ec6",
+      "tags": ["合并", "数字"],
+      "status": "planned"
+    }
+  ]
+}

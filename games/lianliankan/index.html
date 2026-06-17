@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+<meta name="theme-color" content="#0e1116" />
+<title>连连看</title>
+<link rel="manifest" href="./manifest.json" />
+<link rel="icon" href="../../icon-192.png" />
+<style>
+  :root { --bg:#0e1116; --panel:#11151c; --line:#222a36; --text:#e6edf3; --muted:#8b98a9; --accent:#3e63dd; --money:#56d364; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  body { padding: max(14px, env(safe-area-inset-top)) 14px calc(20px + env(safe-area-inset-bottom));
+    max-width: 460px; margin: 0 auto; display: flex; flex-direction: column; min-height: 100vh; }
+  header { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+  .back { color: var(--muted); text-decoration: none; font-size: 20px; line-height: 1; padding: 4px; }
+  h1 { font-size: 18px; margin: 0; font-weight: 600; }
+  .spacer { flex: 1; }
+  .hud { display: flex; gap: 10px; }
+  .stat { background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+    padding: 6px 12px; text-align: right; min-width: 64px; }
+  .stat .k { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .06em; }
+  .stat .v { font-size: 18px; font-weight: 700; line-height: 1.1; }
+  .stat .v.score { color: var(--money); }
+  #board { display: grid; gap: 5px; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 16px; padding: 7px; touch-action: manipulation; user-select: none; }
+  .cell { position: relative; aspect-ratio: 1; }
+  .tile { position: absolute; inset: 4%; border-radius: 20%; display: flex; align-items: center;
+    justify-content: center; font-size: 20px; background: #1b2230; border: 1px solid #2a3445;
+    transition: transform .12s ease, opacity .14s ease; }
+  .cell.sel .tile { transform: scale(.86); box-shadow: 0 0 0 3px var(--money); border-color: var(--money); }
+  .tile.clearing { transform: scale(0); opacity: 0; }
+  @keyframes nope { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-12%)} 75%{transform:translateX(12%)} }
+  .cell.nope .tile { animation: nope .26s ease; }
+  .footer { margin-top: auto; padding-top: 16px; display: flex; align-items: center; gap: 10px; }
+  .footer .hint { color: var(--muted); font-size: 12.5px; line-height: 1.6; flex: 1; }
+  button.act { background: var(--panel); border: 1px solid var(--line); color: var(--text);
+    border-radius: 12px; padding: 9px 14px; font-size: 13px; cursor: pointer; white-space: nowrap; }
+  button.act:active { transform: scale(.97); }
+  .combo { color: var(--money); font-size: 12.5px; min-height: 18px; transition: opacity .3s; }
+  .win { color: var(--money); font-weight: 600; }
+</style>
+</head>
+<body>
+<header>
+  <a class="back" href="../../" aria-label="返回盒子">‹</a>
+  <h1>连连看</h1>
+  <span class="spacer"></span>
+  <div class="hud">
+    <div class="stat"><div class="k">剩余</div><div class="v" id="left">0</div></div>
+    <div class="stat"><div class="k">分数</div><div class="v score" id="score">0</div></div>
+  </div>
+</header>
+
+<div id="board" aria-label="连连看棋盘"></div>
+<div class="combo" id="combo"></div>
+
+<div class="footer">
+  <div class="hint">点两颗<b>相同</b>方块,之间能用不超过两个拐弯的通路连起来就消除。</div>
+  <button class="act" id="shuffle">洗牌</button>
+  <button class="act" id="new">重开</button>
+</div>
+
+<script type="module">
+import { Grid, EMPTY, rng, randInt } from "../../shared/grid-core.js";
+
+const W = 8, H = 8;
+const FACES = ["🍎", "🍊", "🍋", "🍇", "🍉", "🍓", "🍑", "🥝"];   // 8 types × 8 tiles = 64
+const boardEl = document.getElementById("board");
+boardEl.style.gridTemplateColumns = `repeat(${W}, 1fr)`;
+
+let grid, sel, busy, left, score, next;
+
+// --- pathfinding: connectable with <= 2 turns, routing allowed through empty
+// cells AND a 1-wide border ring around the board (classic 连连看 edge wrap). ---
+function pass(x, y) {
+  if (x < -1 || x > W || y < -1 || y > H) return false;      // outside expanded grid
+  if (x < 0 || x >= W || y < 0 || y >= H) return true;       // border ring is always open
+  return grid.get(x, y) === EMPTY;
+}
+// every cell STRICTLY between two colinear points is passable
+function lineClear(ax, ay, bx, by) {
+  if (ax === bx) { const s = Math.min(ay, by) + 1, e = Math.max(ay, by); for (let y = s; y < e; y++) if (!pass(ax, y)) return false; return true; }
+  if (ay === by) { const s = Math.min(ax, bx) + 1, e = Math.max(ax, bx); for (let x = s; x < e; x++) if (!pass(x, ay)) return false; return true; }
+  return false;
+}
+function connect(a, b) {
+  // 0 turns — straight line
+  if ((a.x === b.x || a.y === b.y) && lineClear(a.x, a.y, b.x, b.y)) return true;
+  // 1 turn — via a corner
+  for (const c of [{ x: a.x, y: b.y }, { x: b.x, y: a.y }])
+    if (pass(c.x, c.y) && lineClear(a.x, a.y, c.x, c.y) && lineClear(c.x, c.y, b.x, b.y)) return true;
+  // 2 turns — slide a from any straight-reachable passable cell, then 1 turn to b
+  for (let x = -1; x <= W; x++) for (let y = -1; y <= H; y++) {
+    if ((x === a.x && y === a.y) || !pass(x, y)) continue;
+    if (!((x === a.x || y === a.y) && lineClear(a.x, a.y, x, y))) continue;   // straight reach from a
+    if ((x === b.x || y === b.y) && lineClear(x, y, b.x, b.y)) return true;   // then straight to b
+    for (const c of [{ x, y: b.y }, { x: b.x, y }])
+      if (pass(c.x, c.y) && lineClear(x, y, c.x, c.y) && lineClear(c.x, c.y, b.x, b.y)) return true;
+  }
+  return false;
+}
+
+// --- board generation: even count per type, shuffled into the grid ----------
+function shuffle(arr) {
+  for (let i = arr.length - 1; i > 0; i--) { const j = randInt(next, i + 1); [arr[i], arr[j]] = [arr[j], arr[i]]; }
+  return arr;
+}
+function deal() {
+  const per = (W * H) / FACES.length;          // 8 tiles per type
+  const bag = [];
+  for (let t = 0; t < FACES.length; t++) for (let k = 0; k < per; k++) bag.push(t);
+  shuffle(bag);
+  grid = new Grid(W, H);
+  let i = 0;
+  grid.forEach((_, x, y) => grid.set(x, y, bag[i++]));
+}
+
+function tilesLeft() { let n = 0; grid.forEach((v) => { if (v !== EMPTY) n++; }); return n; }
+
+// any connectable same-type pair left?
+function hasMove() {
+  const byType = new Map();
+  grid.forEach((v, x, y) => { if (v !== EMPTY) { (byType.get(v) || byType.set(v, []).get(v)).push({ x, y }); } });
+  for (const list of byType.values())
+    for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++)
+      if (connect(list[i], list[j])) return true;
+  return false;
+}
+
+// re-pack remaining tiles into remaining cells, retry until a move exists
+function reshuffle() {
+  const vals = [], pos = [];
+  grid.forEach((v, x, y) => { if (v !== EMPTY) { vals.push(v); pos.push({ x, y }); } });
+  if (!pos.length) return;
+  for (let tries = 0; tries < 30; tries++) {
+    shuffle(vals);
+    pos.forEach((p, k) => grid.set(p.x, p.y, vals[k]));
+    if (hasMove()) break;
+  }
+}
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+function render() {
+  boardEl.replaceChildren();
+  grid.forEach((v, x, y) => {
+    const cell = document.createElement("div");
+    cell.className = "cell" + (sel && sel.x === x && sel.y === y ? " sel" : "");
+    cell.dataset.x = x; cell.dataset.y = y;
+    if (v !== EMPTY) {
+      const tile = document.createElement("div");
+      tile.className = "tile";
+      tile.textContent = FACES[v];
+      cell.appendChild(tile);
+    }
+    boardEl.appendChild(cell);
+  });
+}
+
+function flash(msg, win) {
+  const el = document.getElementById("combo");
+  el.textContent = msg; el.className = "combo" + (win ? " win" : ""); el.style.opacity = "1";
+  clearTimeout(flash._t);
+  if (!win) flash._t = setTimeout(() => { el.style.opacity = "0"; }, 900);
+}
+function nope(a, b) { [a, b].forEach((p) => { const c = boardEl.children[p.y * W + p.x]; if (c) c.classList.add("nope"); }); }
+
+async function clearPair(a, b) {
+  busy = true;
+  [a, b].forEach((p) => { const c = boardEl.children[p.y * W + p.x]; const t = c && c.firstChild; if (t) t.classList.add("clearing"); });
+  await sleep(150);
+  grid.set(a.x, a.y, EMPTY); grid.set(b.x, b.y, EMPTY);
+  sel = null;
+  score += 10; left = tilesLeft();
+  document.getElementById("score").textContent = score;
+  document.getElementById("left").textContent = left;
+  render();
+  if (left === 0) { flash("通关!🎉", true); busy = false; return; }
+  if (!hasMove()) { flash("无解,自动洗牌", false); await sleep(350); reshuffle(); render(); }
+  busy = false;
+}
+
+function onTap(e) {
+  const cell = e.target.closest(".cell");
+  if (!cell || busy) return;
+  const x = +cell.dataset.x, y = +cell.dataset.y;
+  const v = grid.get(x, y);
+  if (v === EMPTY) { if (sel) { sel = null; render(); } return; }
+  if (!sel) { sel = { x, y }; render(); return; }
+  if (sel.x === x && sel.y === y) { sel = null; render(); return; }
+  const a = grid.get(sel.x, sel.y);
+  if (a === v && connect(sel, { x, y })) { const s = sel; clearPair(s, { x, y }); return; }
+  if (a === v) {                                                         // same type, blocked
+    const s = sel; sel = null; render(); nope(s, { x, y }); return;      // render first, then shake fresh DOM
+  }
+  sel = { x, y }; render();                                              // different type → reselect
+}
+boardEl.addEventListener("click", onTap);
+
+document.getElementById("shuffle").addEventListener("click", () => {
+  if (busy) return; sel = null; reshuffle(); render(); flash("已洗牌", false);
+});
+
+function start() {
+  next = rng((Date.now() & 0xffffffff) >>> 0);
+  score = 0; busy = false; sel = null;
+  deal();
+  if (!hasMove()) reshuffle();
+  left = tilesLeft();
+  document.getElementById("score").textContent = "0";
+  document.getElementById("left").textContent = left;
+  document.getElementById("combo").style.opacity = "0";
+  render();
+}
+document.getElementById("new").addEventListener("click", start);
+start();
+
+if ("serviceWorker" in navigator) {
+  addEventListener("load", () => navigator.serviceWorker.register("./sw.js").catch(() => {}));
+}
+</script>
+</body>
+</html>

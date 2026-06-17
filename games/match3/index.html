@@ -1,0 +1,303 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+<meta name="theme-color" content="#0e1116" />
+<title>消消乐</title>
+<link rel="manifest" href="./manifest.json" />
+<link rel="icon" href="../../icon-192.png" />
+<style>
+  :root {
+    --bg: #0e1116; --panel: #11151c; --line: #222a36; --line2: #2a3445;
+    --text: #e6edf3; --muted: #8b98a9; --faint: #5b6675; --accent: #3e63dd;
+    --money: #56d364; --chips: #3e63dd; --mult: #ffb224; --blind: #e5484d;
+    --g0: #e5484d; --g1: #ffb224; --g2: #46a758; --g3: #3e63dd; --g4: #8e4ec6;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  body { padding: max(14px, env(safe-area-inset-top)) 14px calc(20px + env(safe-area-inset-bottom));
+    max-width: 460px; margin: 0 auto; display: flex; flex-direction: column; min-height: 100vh; }
+  header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+  .back { color: var(--muted); text-decoration: none; font-size: 20px; line-height: 1; padding: 4px; }
+  h1 { font-size: 18px; margin: 0; font-weight: 600; }
+  .spacer { flex: 1; }
+  .lvl { color: var(--muted); font-size: 13px; }
+  .lvl b { color: var(--text); font-size: 15px; }
+  .goalbar { background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+    padding: 10px 12px; margin-bottom: 10px; }
+  .goalrow { display: flex; justify-content: space-between; align-items: baseline; }
+  .goalrow .target { color: var(--blind); font-size: 13px; } .goalrow .target b { font-size: 18px; font-weight: 700; }
+  .goalrow .moves { color: var(--muted); font-size: 13px; } .goalrow .moves b { color: var(--text); font-size: 18px; font-weight: 700; }
+  .prog { height: 6px; background: #222a36; border-radius: 4px; margin: 8px 0 6px; overflow: hidden; }
+  #progfill { height: 100%; width: 0%; background: var(--money); transition: width .4s ease; }
+  .scoreline { color: var(--muted); font-size: 12px; }
+  .scoreline b { color: var(--money); font-size: 16px; font-weight: 700; }
+  .resolve { text-align: center; min-height: 26px; margin-bottom: 8px; opacity: 0; transition: opacity .25s; }
+  .resolve .c { color: var(--chips); font-weight: 700; font-size: 18px; }
+  .resolve .m { color: var(--mult); font-weight: 700; font-size: 18px; }
+  .resolve .t { color: var(--money); font-weight: 700; font-size: 22px; }
+  .resolve .op { color: var(--faint); font-size: 14px; margin: 0 4px; }
+  #board { display: grid; gap: 5px; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 16px; padding: 7px; touch-action: none; user-select: none; }
+  #board.shake { animation: bshake .3s ease; }
+  @keyframes bshake { 0%,100%{transform:translate(0,0)} 20%{transform:translate(-5px,2px)} 40%{transform:translate(5px,-2px)} 60%{transform:translate(-4px,1px)} 80%{transform:translate(4px,0)} }
+  .cell { position: relative; aspect-ratio: 1; }
+  .gem { position: absolute; inset: 5%; border-radius: 22%; transition: transform .12s ease, opacity .14s ease; transform-origin: center; }
+  .gem.g0 { background: var(--g0); } .gem.g1 { background: var(--g1); }
+  .gem.g2 { background: var(--g2); } .gem.g3 { background: var(--g3); } .gem.g4 { background: var(--g4); }
+  .cell.sel .gem { transform: scale(.84); box-shadow: 0 0 0 3px var(--text); }
+  .gem.clearing { transform: scale(0); opacity: 0; }
+  @keyframes nope { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-12%)} 75%{transform:translateX(12%)} }
+  .cell.nope .gem { animation: nope .26s ease; }
+  .footer { margin-top: auto; padding-top: 16px; display: flex; align-items: center; gap: 12px; }
+  .footer .hint { color: var(--muted); font-size: 12.5px; line-height: 1.6; flex: 1; }
+  button.new { background: var(--panel); border: 1px solid var(--line); color: var(--text);
+    border-radius: 12px; padding: 9px 16px; font-size: 14px; cursor: pointer; }
+  button.new:active { transform: scale(.97); }
+  .overlay { position: fixed; inset: 0; background: rgba(8,10,14,.86); display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 8px; z-index: 10; padding: 24px; text-align: center; }
+  .overlay[hidden] { display: none; }   /* class selector beats UA [hidden]; restore the hide */
+  .overlay h2 { margin: 0; font-size: 26px; } .overlay .sub { color: var(--muted); font-size: 14px; }
+  .overlay .big { color: var(--money); font-size: 40px; font-weight: 700; margin: 6px 0; }
+  .overlay button { margin-top: 14px; background: var(--accent); border: none; color: #fff;
+    border-radius: 12px; padding: 12px 28px; font-size: 16px; cursor: pointer; }
+</style>
+</head>
+<body>
+<header>
+  <a class="back" href="../../" aria-label="返回盒子">‹</a>
+  <h1>消消乐</h1>
+  <span class="spacer"></span>
+  <div class="lvl">第 <b id="level">1</b> 关</div>
+</header>
+
+<div class="goalbar">
+  <div class="goalrow">
+    <span class="target">过关线 <b id="target">0</b></span>
+    <span class="moves">步数 <b id="moves">0</b></span>
+  </div>
+  <div class="prog"><div id="progfill"></div></div>
+  <div class="scoreline">本关 <b id="score">0</b> · 总分 <span id="run">0</span></div>
+</div>
+
+<div class="resolve" id="resolve"></div>
+<div id="board" aria-label="消除棋盘"></div>
+
+<div class="footer">
+  <div class="hint">拖动方块和相邻一颗交换。凑三连消除,<b>连锁拉高倍率</b> —— 分数 = 基础 × 倍率。N 步内达过关线。</div>
+  <button class="new" id="new">重开</button>
+</div>
+
+<div class="overlay" id="overlay" hidden>
+  <h2 id="ov-title"></h2>
+  <div class="sub" id="ov-sub"></div>
+  <div class="big" id="ov-big"></div>
+  <button id="ov-btn">再来一把</button>
+</div>
+
+<script type="module">
+import { Grid, EMPTY, rng, randInt, collapseDown, fillEmpty } from "../../shared/grid-core.js";
+
+const W = 8, H = 8, COLORS = 5;
+const BASE_TARGET = 500, MOVES = 12, GROWTH = 1.7;
+const boardEl = document.getElementById("board");
+boardEl.style.gridTemplateColumns = `repeat(${W}, 1fr)`;
+const $ = (id) => document.getElementById(id);
+
+let grid, level, target, movesLeft, levelScore, runScore, busy, over, sel, next;
+
+const targetFor = (lv) => Math.round(BASE_TARGET * Math.pow(GROWTH, lv - 1));
+const newTile = () => randInt(next, COLORS);
+
+// --- tiny Web Audio juice (first user gesture unlocks it) ---------------------
+let actx;
+function beep(freq, dur = 0.06, type = "triangle", gain = 0.05) {
+  try {
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    const o = actx.createOscillator(), g = actx.createGain();
+    o.type = type; o.frequency.value = freq; g.gain.value = gain;
+    o.connect(g); g.connect(actx.destination); o.start();
+    g.gain.exponentialRampToValueAtTime(0.0001, actx.currentTime + dur);
+    o.stop(actx.currentTime + dur);
+  } catch (e) {}
+}
+function countUp(el, from, to, ms = 450) {
+  const t0 = performance.now();
+  (function step(t) {
+    const k = Math.min(1, (t - t0) / ms);
+    el.textContent = Math.round(from + (to - from) * k);
+    if (k < 1) requestAnimationFrame(step);
+  })(performance.now());
+}
+
+function freshBoard() {
+  grid = new Grid(W, H);
+  grid.forEach((_, x, y) => {
+    let v;
+    do { v = newTile(); }
+    while ((x >= 2 && grid.get(x - 1, y) === v && grid.get(x - 2, y) === v) ||
+           (y >= 2 && grid.get(x, y - 1) === v && grid.get(x, y - 2) === v));
+    grid.set(x, y, v);
+  });
+}
+
+function findMatches(g) {
+  const hit = new Set();
+  const scan = (get, mode) => {
+    const outer = mode === "row" ? g.h : g.w, inner = mode === "row" ? g.w : g.h;
+    for (let a = 0; a < outer; a++) {
+      let run = 1;
+      for (let b = 1; b <= inner; b++) {
+        const cur = b < inner ? get(a, b) : null, prev = get(a, b - 1);
+        if (cur !== EMPTY && cur === prev) run++;
+        else { if (run >= 3) for (let k = 1; k <= run; k++) { const bb = b - k; hit.add(mode === "row" ? g.idx(bb, a) : g.idx(a, bb)); } run = 1; }
+      }
+    }
+  };
+  scan((a, b) => g.get(b, a), "row");
+  scan((a, b) => g.get(a, b), "col");
+  return hit;
+}
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+function render() {
+  boardEl.replaceChildren();
+  grid.forEach((v, x, y) => {
+    const cell = document.createElement("div");
+    cell.className = "cell" + (sel && sel.x === x && sel.y === y ? " sel" : "");
+    cell.dataset.x = x; cell.dataset.y = y;
+    if (v !== EMPTY) { const gem = document.createElement("div"); gem.className = "gem g" + v; cell.appendChild(gem); }
+    boardEl.appendChild(cell);
+  });
+}
+
+function updateProgress() {
+  $("progfill").style.width = Math.min(100, (levelScore / target) * 100) + "%";
+}
+function showResolve(chips, mult, total) {
+  const el = $("resolve");
+  el.innerHTML = total == null
+    ? `<span class="c">${chips}</span><span class="op">×</span><span class="m">${mult}</span>`
+    : `<span class="c">${chips}</span><span class="op">×</span><span class="m">${mult}</span><span class="op">=</span><span class="t">${total}</span>`;
+  el.style.opacity = "1";
+  clearTimeout(showResolve._t);
+  if (total != null) showResolve._t = setTimeout(() => { el.style.opacity = "0"; }, 1100);
+}
+function shakeBoard() { boardEl.classList.remove("shake"); void boardEl.offsetWidth; boardEl.classList.add("shake"); }
+function nope(a, b) { [a, b].forEach((p) => { const c = boardEl.children[p.y * W + p.x]; if (c) c.classList.add("nope"); }); }
+
+// resolve a move's cascade: accumulate chips + mult, score once as chips × mult
+async function resolve() {
+  let chips = 0, mult = 0;
+  while (true) {
+    const hits = findMatches(grid);
+    if (hits.size === 0) break;
+    mult++; chips += hits.size * 10;
+    beep(420 + mult * 120, 0.05);
+    showResolve(chips, mult);
+    hits.forEach((i) => { const cell = boardEl.children[i]; const gem = cell && cell.firstChild; if (gem) gem.classList.add("clearing"); grid.cells[i] = EMPTY; });
+    await sleep(150);
+    collapseDown(grid); fillEmpty(grid, newTile); render();
+    await sleep(110);
+  }
+  if (mult === 0) return 0;
+  const moveScore = chips * mult;
+  if (mult >= 3) { shakeBoard(); beep(660, 0.12, "sawtooth", 0.05); }
+  const before = levelScore;
+  levelScore += moveScore; runScore += moveScore;
+  countUp($("score"), before, levelScore);
+  $("run").textContent = runScore;
+  showResolve(chips, mult, moveScore);
+  updateProgress();
+  return moveScore;
+}
+
+async function levelUp() {
+  [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => beep(f, 0.12, "triangle", 0.05), i * 90));
+  level++; target = targetFor(level); movesLeft = MOVES; levelScore = 0;
+  $("level").textContent = level; $("target").textContent = target;
+  $("moves").textContent = movesLeft; $("score").textContent = "0";
+  updateProgress();
+  const el = $("resolve");
+  el.innerHTML = `<span class="t">过关!→ 第 ${level} 关</span>`; el.style.opacity = "1";
+  await sleep(900); el.style.opacity = "0";
+}
+
+function gameOver() {
+  over = true;
+  [330, 247, 165].forEach((f, i) => setTimeout(() => beep(f, 0.2, "sine", 0.05), i * 130));
+  $("ov-title").textContent = "本局结束";
+  $("ov-sub").textContent = `到达第 ${level} 关 · 差 ${target - levelScore} 分过线`;
+  $("ov-big").textContent = runScore + " 分";
+  $("overlay").hidden = false;
+}
+
+async function trySwap(a, b) {
+  if (busy || over) return;
+  busy = true; sel = null;
+  grid.swap(a.x, a.y, b.x, b.y); render(); await sleep(130);
+  if (findMatches(grid).size === 0) {
+    grid.swap(a.x, a.y, b.x, b.y); render(); nope(a, b); await sleep(280); busy = false; return;
+  }
+  movesLeft--; $("moves").textContent = movesLeft;
+  await resolve();
+  if (levelScore >= target) await levelUp();
+  else if (movesLeft <= 0) gameOver();
+  busy = false;
+}
+
+// input: drag a gem to a neighbor to swap; tap-then-adjacent-tap also works
+let drag = null;
+const cellAt = (t) => { const c = t.closest && t.closest(".cell"); return c ? { x: +c.dataset.x, y: +c.dataset.y } : null; };
+boardEl.addEventListener("pointerdown", (e) => {
+  if (busy || over) return; const c = cellAt(e.target); if (!c) return;
+  drag = { ...c, sx: e.clientX, sy: e.clientY, moved: false };
+});
+boardEl.addEventListener("pointermove", (e) => {
+  if (!drag || busy || drag.moved) return;
+  const dx = e.clientX - drag.sx, dy = e.clientY - drag.sy;
+  if (Math.max(Math.abs(dx), Math.abs(dy)) < 16) return;
+  drag.moved = true;
+  let nx = drag.x, ny = drag.y;
+  if (Math.abs(dx) > Math.abs(dy)) nx += dx > 0 ? 1 : -1; else ny += dy > 0 ? 1 : -1;
+  const from = { x: drag.x, y: drag.y }; drag = null;
+  if (nx < 0 || nx >= W || ny < 0 || ny >= H) { sel = null; render(); return; }
+  sel = null; trySwap(from, { x: nx, y: ny });
+});
+function endDrag() {
+  if (!drag) return;
+  if (!drag.moved && !busy && !over) {
+    const x = drag.x, y = drag.y;
+    if (!sel) sel = { x, y };
+    else if (sel.x === x && sel.y === y) sel = null;
+    else if (Math.abs(sel.x - x) + Math.abs(sel.y - y) === 1) { const a = sel; drag = null; trySwap(a, { x, y }); return; }
+    else sel = { x, y };
+    render();
+  }
+  drag = null;
+}
+boardEl.addEventListener("pointerup", endDrag);
+boardEl.addEventListener("pointercancel", () => { drag = null; });
+
+function start() {
+  next = rng((Date.now() & 0xffffffff) >>> 0);
+  level = 1; target = targetFor(1); movesLeft = MOVES; levelScore = 0; runScore = 0;
+  busy = false; over = false; sel = null;
+  $("level").textContent = "1"; $("target").textContent = target; $("moves").textContent = movesLeft;
+  $("score").textContent = "0"; $("run").textContent = "0"; $("resolve").style.opacity = "0";
+  $("overlay").hidden = true;
+  updateProgress(); freshBoard(); render();
+}
+$("new").addEventListener("click", start);
+$("ov-btn").addEventListener("click", start);
+start();
+
+if ("serviceWorker" in navigator) {
+  addEventListener("load", () => navigator.serviceWorker.register("./sw.js").catch(() => {}));
+}
+</script>
+</body>
+</html>

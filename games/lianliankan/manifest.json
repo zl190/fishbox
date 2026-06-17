@@ -1,0 +1,15 @@
+{
+  "name": "连连看",
+  "short_name": "连连看",
+  "description": "点两颗相同方块,之间能用不超过两个拐弯的通路连起来就消除。消光通关。",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0e1116",
+  "theme_color": "#0e1116",
+  "icons": [
+    { "src": "../../icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "../../icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
