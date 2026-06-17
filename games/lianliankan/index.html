@@ -24,8 +24,11 @@
   .stat .k { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .06em; }
   .stat .v { font-size: 18px; font-weight: 700; line-height: 1.1; }
   .stat .v.score { color: var(--money); }
+  .board-wrap { position: relative; }
   #board { display: grid; gap: 5px; background: var(--panel); border: 1px solid var(--line);
     border-radius: 16px; padding: 7px; touch-action: manipulation; user-select: none; }
+  .link { position: absolute; inset: 0; pointer-events: none; overflow: visible;
+    opacity: 0; transition: opacity .12s ease; }
   .cell { position: relative; aspect-ratio: 1; }
   .tile { position: absolute; inset: 4%; border-radius: 20%; display: flex; align-items: center;
     justify-content: center; font-size: 20px; background: #1b2230; border: 1px solid #2a3445;
@@ -41,26 +44,50 @@
   button.act:active { transform: scale(.97); }
   .combo { color: var(--money); font-size: 12.5px; min-height: 18px; transition: opacity .3s; }
   .win { color: var(--money); font-weight: 600; }
+  .lvl { color: var(--muted); font-size: 13px; } .lvl b { color: var(--text); font-size: 15px; }
+  .stat .v.time { color: var(--text); } .stat .v.time.low { color: #e5484d; }
+  .tbar { height: 5px; background: #222a36; border-radius: 3px; margin: -4px 0 12px; overflow: hidden; }
+  #tfill { height: 100%; width: 100%; background: var(--money); transition: width .12s linear, background .3s; }
+  #tfill.low { background: #e5484d; }
+  .overlay { position: fixed; inset: 0; background: rgba(8,10,14,.86); display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 6px; z-index: 10; padding: 24px; text-align: center; }
+  .overlay[hidden] { display: none; }
+  .overlay h2 { margin: 0; font-size: 26px; } .overlay .sub { color: var(--muted); font-size: 14px; }
+  .overlay .big { color: var(--money); font-size: 40px; font-weight: 700; margin: 6px 0; }
+  .overlay button { margin-top: 14px; background: var(--accent); border: none; color: #fff;
+    border-radius: 12px; padding: 12px 28px; font-size: 16px; cursor: pointer; }
 </style>
 </head>
 <body>
 <header>
   <a class="back" href="../../" aria-label="返回盒子">‹</a>
   <h1>连连看</h1>
+  <span class="lvl">第 <b id="level">1</b> 关</span>
   <span class="spacer"></span>
   <div class="hud">
-    <div class="stat"><div class="k">剩余</div><div class="v" id="left">0</div></div>
+    <div class="stat"><div class="k">时间</div><div class="v time" id="time">0</div></div>
     <div class="stat"><div class="k">分数</div><div class="v score" id="score">0</div></div>
   </div>
 </header>
+<div class="tbar"><div id="tfill"></div></div>
 
-<div id="board" aria-label="连连看棋盘"></div>
+<div class="board-wrap">
+  <div id="board" aria-label="连连看棋盘"></div>
+  <svg id="link" class="link" aria-hidden="true"></svg>
+</div>
 <div class="combo" id="combo"></div>
 
 <div class="footer">
-  <div class="hint">点两颗<b>相同</b>方块,之间能用不超过两个拐弯的通路连起来就消除。</div>
+  <div class="hint">点两颗<b>相同</b>方块连消。<b>限时</b>清光进下一关,关卡越深时间越紧。</div>
   <button class="act" id="shuffle">洗牌</button>
   <button class="act" id="new">重开</button>
+</div>
+
+<div class="overlay" id="overlay" hidden>
+  <h2>时间到</h2>
+  <div class="sub" id="ov-sub"></div>
+  <div class="big" id="ov-big"></div>
+  <button id="ov-btn">再来一把</button>
 </div>
 
 <script type="module">
@@ -71,7 +98,42 @@ const FACES = ["🍎", "🍊", "🍋", "🍇", "🍉", "🍓", "🍑", "🥝"]; 
 const boardEl = document.getElementById("board");
 boardEl.style.gridTemplateColumns = `repeat(${W}, 1fr)`;
 
-let grid, sel, busy, left, score, next;
+let grid, sel, busy, left, score, next, level, timeLeft, timeId, over;
+
+// timed mode: each level a fresh board with a shrinking budget → speed/skill game
+const timeBudget = (lv) => Math.max(30, 70 - (lv - 1) * 6);
+function startTimer() {
+  clearInterval(timeId);
+  timeId = setInterval(() => {
+    if (over) return;
+    timeLeft -= 0.1;
+    if (timeLeft <= 0) { timeLeft = 0; paintTime(); timeUp(); return; }
+    paintTime();
+  }, 100);
+}
+function paintTime() {
+  const budget = timeBudget(level), low = timeLeft <= 10;
+  const t = document.getElementById("time");
+  t.textContent = Math.ceil(timeLeft); t.classList.toggle("low", low);
+  const f = document.getElementById("tfill");
+  f.style.width = Math.min(100, (timeLeft / budget) * 100) + "%"; f.classList.toggle("low", low);
+}
+function timeUp() {
+  over = true; clearInterval(timeId);
+  document.getElementById("ov-sub").textContent = `到达第 ${level} 关`;
+  document.getElementById("ov-big").textContent = score + " 分";
+  document.getElementById("overlay").hidden = false;
+}
+function nextLevel() {
+  const bonus = 100 + Math.ceil(timeLeft) * 5;            // reward leftover time
+  score += bonus; document.getElementById("score").textContent = score;
+  level++; document.getElementById("level").textContent = level;
+  timeLeft = timeBudget(level); paintTime();
+  next = rng(((Date.now() & 0xffffffff) >>> 0) ^ (level * 2654435761));
+  deal(); if (!hasMove()) reshuffle(); left = tilesLeft();
+  flash(`过关 +${bonus} → 第 ${level} 关`, false);
+  render();
+}
 
 // --- pathfinding: connectable with <= 2 turns, routing allowed through empty
 // cells AND a 1-wide border ring around the board (classic 连连看 edge wrap). ---
@@ -86,22 +148,34 @@ function lineClear(ax, ay, bx, by) {
   if (ay === by) { const s = Math.min(ax, bx) + 1, e = Math.max(ax, bx); for (let x = s; x < e; x++) if (!pass(x, ay)) return false; return true; }
   return false;
 }
+// Returns the connecting polyline (array of grid points incl. corners) or null.
+// Truthy = connectable, so hasMove() can keep using it as a boolean.
+//
+// [PARKED · CS6601 接口] 这是个封闭式解(利用「≤2 拐弯」定理枚举 0/1/2 turn),
+// 不是通用搜索。要练 A1 时,可在此替换成 (pos, dir, turns) 状态空间的 BFS/UCS/A*/
+// bidirectional,返回同样的 path 数组即可即插即用(drawLink 不用改)。见 docs 注记。
 function connect(a, b) {
   // 0 turns — straight line
-  if ((a.x === b.x || a.y === b.y) && lineClear(a.x, a.y, b.x, b.y)) return true;
+  if ((a.x === b.x || a.y === b.y) && lineClear(a.x, a.y, b.x, b.y)) return [a, b];
   // 1 turn — via a corner
   for (const c of [{ x: a.x, y: b.y }, { x: b.x, y: a.y }])
-    if (pass(c.x, c.y) && lineClear(a.x, a.y, c.x, c.y) && lineClear(c.x, c.y, b.x, b.y)) return true;
-  // 2 turns — slide a from any straight-reachable passable cell, then 1 turn to b
+    if (pass(c.x, c.y) && lineClear(a.x, a.y, c.x, c.y) && lineClear(c.x, c.y, b.x, b.y)) return [a, c, b];
+  // 2 turns — slide a from any straight-reachable passable cell, then 1 turn to b.
+  // Keep the SHORTEST candidate (not first-found) so the line hugs the nearest
+  // side instead of always routing over the top border.
+  let best = null, bestLen = Infinity;
+  const consider = (path) => { const L = pathLen(path); if (L < bestLen) { bestLen = L; best = path; } };
   for (let x = -1; x <= W; x++) for (let y = -1; y <= H; y++) {
     if ((x === a.x && y === a.y) || !pass(x, y)) continue;
     if (!((x === a.x || y === a.y) && lineClear(a.x, a.y, x, y))) continue;   // straight reach from a
-    if ((x === b.x || y === b.y) && lineClear(x, y, b.x, b.y)) return true;   // then straight to b
+    const p = { x, y };
+    if ((x === b.x || y === b.y) && lineClear(x, y, b.x, b.y)) consider([a, p, b]);   // then straight to b
     for (const c of [{ x, y: b.y }, { x: b.x, y }])
-      if (pass(c.x, c.y) && lineClear(x, y, c.x, c.y) && lineClear(c.x, c.y, b.x, b.y)) return true;
+      if (pass(c.x, c.y) && lineClear(x, y, c.x, c.y) && lineClear(c.x, c.y, b.x, b.y)) consider([a, p, c, b]);
   }
-  return false;
+  return best;
 }
+function pathLen(pts) { let L = 0; for (let i = 1; i < pts.length; i++) L += Math.abs(pts[i].x - pts[i - 1].x) + Math.abs(pts[i].y - pts[i - 1].y); return L; }
 
 // --- board generation: even count per type, shuffled into the grid ----------
 function shuffle(arr) {
@@ -168,31 +242,62 @@ function flash(msg, win) {
 }
 function nope(a, b) { [a, b].forEach((p) => { const c = boardEl.children[p.y * W + p.x]; if (c) c.classList.add("nope"); }); }
 
-async function clearPair(a, b) {
+// grid coord (incl. border -1..W) → pixel center within the board overlay
+function cellCenter(gx, gy) {
+  const br = boardEl.getBoundingClientRect();
+  const c0 = boardEl.children[0].getBoundingClientRect();
+  const cx = boardEl.children[1].getBoundingClientRect();
+  const cy = boardEl.children[W].getBoundingClientRect();
+  const stepX = cx.left - c0.left, stepY = cy.top - c0.top;
+  const ox = (c0.left - br.left) + c0.width / 2, oy = (c0.top - br.top) + c0.height / 2;
+  return { x: ox + gx * stepX, y: oy + gy * stepY };
+}
+function drawLink(path) {
+  const svg = document.getElementById("link");
+  const br = boardEl.getBoundingClientRect();
+  svg.setAttribute("viewBox", `0 0 ${br.width} ${br.height}`);
+  // Clamp every point inside the board so border-routed paths hug the edge and
+  // never spill above the board onto the time bar. Endpoints (real tiles) are
+  // well inside and unaffected.
+  const PAD = 6, clamp = (v, hi) => Math.max(PAD, Math.min(hi - PAD, v));
+  const at = (p) => { const c = cellCenter(p.x, p.y); return { x: clamp(c.x, br.width), y: clamp(c.y, br.height) }; };
+  const pts = path.map((p) => { const c = at(p); return `${c.x},${c.y}`; }).join(" ");
+  const dot = (p) => { const c = at(p); return `<circle cx="${c.x}" cy="${c.y}" r="6" fill="#fff" stroke="rgba(0,0,0,.5)" stroke-width="2"/>`; };
+  // white beam with a dark halo — reads on any tile, visually distinct from the green time bar
+  svg.innerHTML =
+    `<polyline points="${pts}" fill="none" stroke="rgba(0,0,0,.55)" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>` +
+    `<polyline points="${pts}" fill="none" stroke="#ffffff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>` +
+    dot(path[0]) + dot(path[path.length - 1]);
+  svg.style.opacity = "1";
+}
+function clearLink() { const svg = document.getElementById("link"); svg.style.opacity = "0"; svg.innerHTML = ""; }
+
+async function clearPair(a, b, path) {
   busy = true;
+  if (path) { drawLink(path); await sleep(220); clearLink(); }   // show the connecting line first
   [a, b].forEach((p) => { const c = boardEl.children[p.y * W + p.x]; const t = c && c.firstChild; if (t) t.classList.add("clearing"); });
   await sleep(150);
   grid.set(a.x, a.y, EMPTY); grid.set(b.x, b.y, EMPTY);
   sel = null;
   score += 10; left = tilesLeft();
   document.getElementById("score").textContent = score;
-  document.getElementById("left").textContent = left;
   render();
-  if (left === 0) { flash("通关!🎉", true); busy = false; return; }
+  if (left === 0) { nextLevel(); busy = false; return; }   // board cleared in time → next level
   if (!hasMove()) { flash("无解,自动洗牌", false); await sleep(350); reshuffle(); render(); }
   busy = false;
 }
 
 function onTap(e) {
   const cell = e.target.closest(".cell");
-  if (!cell || busy) return;
+  if (!cell || busy || over) return;
   const x = +cell.dataset.x, y = +cell.dataset.y;
   const v = grid.get(x, y);
   if (v === EMPTY) { if (sel) { sel = null; render(); } return; }
   if (!sel) { sel = { x, y }; render(); return; }
   if (sel.x === x && sel.y === y) { sel = null; render(); return; }
   const a = grid.get(sel.x, sel.y);
-  if (a === v && connect(sel, { x, y })) { const s = sel; clearPair(s, { x, y }); return; }
+  const path = a === v ? connect(sel, { x, y }) : null;
+  if (path) { const s = sel; sel = null; render(); clearPair(s, { x, y }, path); return; }   // draw line, then clear
   if (a === v) {                                                         // same type, blocked
     const s = sel; sel = null; render(); nope(s, { x, y }); return;      // render first, then shake fresh DOM
   }
@@ -201,21 +306,24 @@ function onTap(e) {
 boardEl.addEventListener("click", onTap);
 
 document.getElementById("shuffle").addEventListener("click", () => {
-  if (busy) return; sel = null; reshuffle(); render(); flash("已洗牌", false);
+  if (busy || over) return; sel = null; reshuffle(); render(); flash("已洗牌", false);
 });
 
 function start() {
   next = rng((Date.now() & 0xffffffff) >>> 0);
-  score = 0; busy = false; sel = null;
+  score = 0; busy = false; sel = null; over = false; level = 1;
   deal();
   if (!hasMove()) reshuffle();
   left = tilesLeft();
   document.getElementById("score").textContent = "0";
-  document.getElementById("left").textContent = left;
+  document.getElementById("level").textContent = "1";
   document.getElementById("combo").style.opacity = "0";
+  document.getElementById("overlay").hidden = true;
+  timeLeft = timeBudget(1); paintTime(); startTimer();
   render();
 }
 document.getElementById("new").addEventListener("click", start);
+document.getElementById("ov-btn").addEventListener("click", start);
 start();
 
 if ("serviceWorker" in navigator) {

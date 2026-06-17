@@ -1,6 +1,6 @@
 // 连连看 service worker — stale-while-revalidate, scoped to this game's folder.
 // Bump CACHE when the shell list changes. Caches the shared engine for offline.
-const CACHE = "lianliankan-v2";
+const CACHE = "lianliankan-v5";
 const SHELL = ["./", "./index.html", "./manifest.json", "../../shared/grid-core.js"];
 
 self.addEventListener("install", (e) => {

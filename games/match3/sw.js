@@ -1,7 +1,7 @@
 // 消消乐 service worker — stale-while-revalidate, scoped to this game's folder.
 // Bump CACHE when the shell list changes. Caches the shared engine too so the
 // game is fully offline after first open.
-const CACHE = "match3-v4";
+const CACHE = "match3-v8";
 const SHELL = ["./", "./index.html", "./manifest.json", "../../shared/grid-core.js"];
 
 self.addEventListener("install", (e) => {
