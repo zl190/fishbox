@@ -20,7 +20,9 @@
   h1 { font-size: 18px; margin: 0; font-weight: 600; }
 
   /* Emulator mount: full-width 4:3 box, black so letterboxing looks intentional. */
-  #game { width: 100%; aspect-ratio: 4 / 3; background: #000; border-radius: 12px; overflow: hidden; }
+  /* aspect-ratio comes from a :root var (set pre-boot) — EmulatorJS overwrites #game's inline
+     style during init, so we can't set it inline; the var survives and never changes mid-session. */
+  #game { width: 100%; aspect-ratio: var(--game-ar, 4 / 3); background: #000; border-radius: 12px; overflow: hidden; }
   #game:empty { display: none; }
 
   .pick { background: var(--panel); border: 1px solid var(--line); border-radius: 16px;
@@ -166,20 +168,28 @@ const CORE_BY_EXT = {
 };
 const SYS_LABEL = { nes: "FC", snes: "SFC", gb: "GB", gbc: "GBC", gba: "GBA", segaMD: "MD", segaMS: "SMS", n64: "N64", pce: "PCE" };
 
-// ---- screen aspect: 4:3 (TV-correct, wide pixels) ↔ square pixels (taller, crisper) ----
-const ASPECTS = { tv: "4 / 3", square: "256 / 240" };
-let aspect = localStorage.getItem("retro.aspect") || "tv";
-function applyAspect() {
-  $("game").style.aspectRatio = ASPECTS[aspect] || ASPECTS.tv;
-  $("aspect").textContent = aspect === "square" ? "1:1" : "4:3";
-  window.dispatchEvent(new Event("resize"));   // EmulatorJS refits the canvas; band re-lays out
-}
+// ---- screen aspect. CRITICAL: changing #game's aspect-ratio AFTER EmulatorJS' WebGL
+// canvas exists blanks/crashes it (white on desktop, hard crash on mobile). So we set the
+// aspect PRE-RENDER in boot() from a per-console table, and the toggle persists + reloads
+// (re-launching the same game) instead of mutating live. 3 modes:
+//   auto = console display aspect → fills the box, no black bars (default)
+//   tv   = 4:3   ·   square = native pixel aspect (crisp)
+const AR_AUTO   = { nes: 1.306, snes: 1.306, gb: 1.1111, gbc: 1.1111, gba: 1.5, segaMD: 1.3333, segaMS: 1.3333, n64: 1.3333, pce: 1.3333 };
+const AR_SQUARE = { nes: 256/240, snes: 256/224, gb: 160/144, gbc: 160/144, gba: 240/160, segaMD: 320/224, segaMS: 256/192, n64: 4/3, pce: 256/239 };
+const ASPECT_ORDER = ["auto", "tv", "square"];
+const ASPECT_LABEL = { auto: "自适应", tv: "4:3", square: "1:1" };
+let aspect = localStorage.getItem("retro.aspect") || "auto";
+const aspectFor = (core) => aspect === "tv" ? 4/3 : aspect === "square" ? (AR_SQUARE[core] || 4/3) : (AR_AUTO[core] || 4/3);
+$("aspect").textContent = ASPECT_LABEL[aspect];
 $("aspect").onclick = () => {
-  aspect = aspect === "tv" ? "square" : "tv";
+  aspect = ASPECT_ORDER[(ASPECT_ORDER.indexOf(aspect) + 1) % ASPECT_ORDER.length];
   localStorage.setItem("retro.aspect", aspect);
-  applyAspect();
+  $("aspect").textContent = ASPECT_LABEL[aspect];
+  if (window.EJS_emulator && window.EJS_emulator.started) {
+    if (currentSession) localStorage.setItem("retro.resume", JSON.stringify(currentSession));
+    location.reload();   // re-launch so the new aspect applies pre-render (no GL crash)
+  }
 };
-applyAspect();   // apply the persisted choice on load
 
 // ---- adaptive on-screen controls ----------------------------------------------------
 // EmulatorJS' built-in virtual pad is correctly wired per-console but is an overlay meant
@@ -260,9 +270,12 @@ document.addEventListener("fullscreenchange", layoutControls);
 
 // Boot EmulatorJS from an ArrayBuffer + core. One-shot: the loader runs once per page.
 // Data + cores are self-hosted under ./emulatorjs/data/ → no CDN, fully offline.
-function boot(buffer, core, name) {
+let currentSession = null;   // {kind:"demo"} | {kind:"rom", id} — for aspect-toggle re-launch
+function boot(buffer, core, name, session) {
+  currentSession = session || null;
   $("picker").style.display = "none";
   $("swap").style.display = $("fs").style.display = $("editPad").style.display = $("aspect").style.display = "inline-block";
+  document.documentElement.style.setProperty("--game-ar", String(aspectFor(core)));   // PRE-RENDER; survives EmulatorJS init, never changed after
   const blob = new Blob([buffer]);
   window.EJS_player = "#game";
   window.EJS_core = core;
@@ -277,8 +290,8 @@ function boot(buffer, core, name) {
   const s = document.createElement("script");
   s.src = "./emulatorjs/data/loader.js";
   document.body.appendChild(s);
-  // Poll for the pad (created once the core starts), then take over its placement.
-  // Re-apply a few times: EmulatorJS may (re)toggle the pad during its own startup.
+  // Poll for the pad (created once the core starts), then place it. layoutControls only sets
+  // styles — it never resizes the canvas, so it's safe to call repeatedly.
   const poll = setInterval(() => {
     if (document.querySelector(".ejs_virtualGamepad_parent")) {
       clearInterval(poll);
@@ -302,7 +315,7 @@ async function onFile(file) {
   const buffer = await file.arrayBuffer();
   const rec = { id: romId(file.name, file.size), name: file.name, core, buffer, ts: Date.now() };
   try { await putRom(rec); await pruneRecent(); } catch (e) { /* private mode: still playable this session */ }
-  boot(buffer, core, file.name);
+  boot(buffer, core, file.name, { kind: "rom", id: rec.id });
 }
 $("choose").onclick = () => $("file").click();
 $("file").onchange = (e) => { if (e.target.files[0]) onFile(e.target.files[0]); };
@@ -312,7 +325,7 @@ $("demo").onclick = async () => {
   status("加载 Demo…");
   try {
     const buf = await fetch("./roms/tobutobugirl.gb").then((r) => r.arrayBuffer());
-    boot(buf, "gb", "Tobu Tobu Girl");
+    boot(buf, "gb", "Tobu Tobu Girl", { kind: "demo" });
   } catch (e) { status("Demo 加载失败,请检查网络后重试。"); }
 };
 
@@ -335,12 +348,29 @@ async function renderRecent() {
         return;
       }
       rec.ts = Date.now(); putRom(rec).catch(() => {});
-      boot(rec.buffer, rec.core, rec.name);
+      boot(rec.buffer, rec.core, rec.name, { kind: "rom", id: rec.id });
     };
     return row;
   }));
 }
 renderRecent();
+
+// Auto-resume after an aspect-toggle reload, so changing aspect doesn't dump you to the picker.
+(async () => {
+  const raw = localStorage.getItem("retro.resume");
+  if (!raw) return;
+  localStorage.removeItem("retro.resume");
+  try {
+    const s = JSON.parse(raw);
+    if (s.kind === "demo") {
+      const buf = await fetch("./roms/tobutobugirl.gb").then((r) => r.arrayBuffer());
+      boot(buf, "gb", "Tobu Tobu Girl", s);
+    } else if (s.kind === "rom") {
+      const rec = await idb("readonly", (st) => st.get(s.id));
+      if (rec && rec.buffer) boot(rec.buffer, rec.core, rec.name, s);
+    }
+  } catch (e) { /* fall through to picker */ }
+})();
 
 if ("serviceWorker" in navigator) {
   addEventListener("load", () => navigator.serviceWorker.register("./sw.js").catch(() => {}));
