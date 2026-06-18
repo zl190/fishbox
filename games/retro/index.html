@@ -388,7 +388,10 @@ const unlockAudio = () => {
 ["pointerdown", "touchstart", "keydown"].forEach((ev) => document.addEventListener(ev, unlockAudio, { passive: true }));
 
 if ("serviceWorker" in navigator) {
-  addEventListener("load", () => navigator.serviceWorker.register("./sw.js").catch(() => {}));
+  // updateViaCache:none → browser always re-fetches sw.js (don't cache the SW itself), so new
+  // versions are picked up promptly; the SW's network-first HTML then serves the latest code.
+  addEventListener("load", () => navigator.serviceWorker.register("./sw.js", { updateViaCache: "none" })
+    .then((reg) => reg.update()).catch(() => {}));
 }
 </script>
 </body>

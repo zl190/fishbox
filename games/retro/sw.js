@@ -1,7 +1,7 @@
 // 复古机 service worker — self-hosted EmulatorJS, fully offline.
 // Precaches the shell + the self-hosted engine and all shipped cores on install,
 // so every console plays offline from first launch (no CDN, no prior online play).
-const CACHE = "retro-v4";
+const CACHE = "retro-v5";
 
 const SHELL = ["./", "./index.html", "./manifest.json", "./roms/tobutobugirl.gb"];
 
@@ -45,14 +45,18 @@ self.addEventListener("fetch", (e) => {
   if (req.method !== "GET") return;
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;   // skip ROM blob: URLs and anything off-origin
-  e.respondWith(
-    caches.open(CACHE).then((cache) =>
-      cache.match(req).then((cached) => {
-        const networked = fetch(req)
-          .then((res) => { if (res && res.status === 200) cache.put(req, res.clone()); return res; })
-          .catch(() => cached);
-        return cached || networked;
-      })
-    )
-  );
+  const save = (res) => { if (res && res.status === 200) caches.open(CACHE).then((c) => c.put(req, res.clone())); return res; };
+  // Code (HTML/manifest) = NETWORK-FIRST so updates apply immediately online (fall back to cache
+  // offline) — no more "clear site data" to escape a stale version. Big immutable engine/cores/ROM
+  // = CACHE-FIRST (fast, offline), refreshed in the background.
+  const isCode = req.mode === "navigate" || url.pathname.endsWith("/") ||
+    url.pathname.endsWith(".html") || url.pathname.endsWith(".json");
+  if (isCode) {
+    e.respondWith(fetch(req).then(save).catch(() => caches.match(req)));
+  } else {
+    e.respondWith(caches.match(req).then((cached) => {
+      const networked = fetch(req).then(save).catch(() => cached);
+      return cached || networked;
+    }));
+  }
 });
