@@ -291,12 +291,11 @@ function boot(buffer, core, name, session) {
   window.EJS_color = "#9d4edd";
   window.EJS_VirtualGamepadSettings = window.EJS_VirtualGamepadSettings || {};
   // Pin the pad ON (option/element only exists on touch devices → no-op on desktop).
-  // webgl2Enabled defaults to "off" (the built-in default computes to null) → force it on so iOS
-  // uses the same WebGL2 render path as desktop; auto-falls-back to legacy if the device lacks WebGL2.
-  window.EJS_defaultOptions = Object.assign(
-    { "virtual-gamepad": "enabled", "webgl2Enabled": "enabled" },
-    window.EJS_defaultOptions,
-  );
+  // NOTE: do NOT force webgl2 on — its WebGL2 path enables the WEBGL_polygon_mode extension,
+  // which crashed the GPU process on iOS Safari (flat memory, abrupt native crash at the title
+  // frame). The default (legacy/webgl1) path is simpler and stable on iOS; users who want it
+  // can still enable WebGL from the in-game menu.
+  window.EJS_defaultOptions = Object.assign({ "virtual-gamepad": "enabled" }, window.EJS_defaultOptions);
   const s = document.createElement("script");
   s.src = "./emulatorjs/data/loader.js";
   document.body.appendChild(s);
