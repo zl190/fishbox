@@ -1,9 +1,9 @@
 // 复古机 service worker — self-hosted EmulatorJS, fully offline.
 // Precaches the shell + the self-hosted engine and all shipped cores on install,
 // so every console plays offline from first launch (no CDN, no prior online play).
-const CACHE = "retro-v2";
+const CACHE = "retro-v3";
 
-const SHELL = ["./", "./index.html", "./manifest.json"];
+const SHELL = ["./", "./index.html", "./manifest.json", "./roms/tobutobugirl.gb"];
 
 const EJS = "./emulatorjs/data/";
 const ENGINE = [
