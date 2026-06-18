@@ -32,16 +32,39 @@ fetch() { # <relpath>
   printf '  %-44s %6sKB\n' "$rel" "$(( $(wc -c <"$out") / 1024 ))"
 }
 
+fetch_opt() { # <relpath> — like fetch but tolerates a 404 (optional asset)
+  local rel="$1" out="$DEST/$1"
+  mkdir -p "$(dirname "$out")"
+  if curl -fsSL "$BASE/$rel" -o "$out" 2>/dev/null; then
+    printf '  %-44s %6sKB\n' "$rel" "$(( $(wc -c <"$out") / 1024 ))"
+  else
+    printf '  %-44s %s\n' "$rel" "(skipped: not on CDN)"
+  fi
+}
+
 echo "Vendoring EmulatorJS ($EJS_VER) → $DEST"
 for f in "${FRAMEWORK[@]}"; do fetch "$f"; done
-# Two core variants per console: "-wasm.data" (webgl2, no threads — real devices on a
-# plain static host) and "-legacy-wasm.data" (no webgl2 fallback). GitHub Pages sends no
-# COOP/COEP, so the threaded ("-thread") variants are never used — skipped to save space.
+# Three core variants per console:
+#   "-wasm.data"        webgl2, single-thread  (default on a plain static host)
+#   "-legacy-wasm.data" no-webgl2 fallback, single-thread
+#   "-thread-wasm.data" threaded (SharedArrayBuffer) — used ONLY when the page is
+#                       cross-origin isolated. We now inject COOP/COEP via the service
+#                       worker (coi technique) so threads work on GitHub Pages too, hence
+#                       the "-thread" variants are vendored. EJS_threads gates them on at
+#                       runtime (desktop/Android only; iOS stays single-thread).
 for c in "${CORES[@]}"; do
   fetch "cores/${c}-wasm.data"
   fetch "cores/${c}-legacy-wasm.data"
+  fetch "cores/${c}-thread-wasm.data"
   fetch "cores/reports/${c}.json"
 done
+
+# PSP (ppsspp) — the CDN ships ONLY the threaded build (no -wasm/-legacy), the core
+# *requires* both threads and WebGL2, and it needs its own ~11MB asset bundle. So PSP is
+# desktop-only in practice (iOS = no stable threads + the WebGL2 polygon_mode crash).
+fetch     "cores/ppsspp-thread-wasm.data"
+fetch     "cores/ppsspp-assets.zip"
+fetch_opt "cores/reports/ppsspp.json"
 
 # emulator.min.js hard-codes an update-check fetch to the CDN's version.json, ignoring
 # EJS_pathtodata. Repoint it at the local copy so the app makes ZERO external requests.

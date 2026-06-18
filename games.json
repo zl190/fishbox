@@ -63,10 +63,10 @@
       "id": "retro",
       "name": "复古机",
       "family": "retro",
-      "short": "上传本地 ROM,FC/SFC/GB/GBA/MD/N64 在浏览器里跑。",
+      "short": "上传本地 ROM,FC/SFC/GB/GBA/MD/N64 在浏览器里跑;桌面端开线程加速并解锁 PSP。",
       "url": "./games/retro/",
       "color": "#9d4edd",
-      "tags": ["模拟器", "本地ROM"]
+      "tags": ["模拟器", "本地ROM", "PSP·桌面"]
     }
   ]
 }

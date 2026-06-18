@@ -44,6 +44,11 @@
   .resume b { color: var(--text); font-weight: 600; }
   .note { color: var(--muted); font-size: 11.5px; line-height: 1.7; margin-top: 16px;
     padding-top: 12px; border-top: 1px solid var(--line); }
+  .plat { margin-top: 12px; font-size: 12px; line-height: 1.6; color: var(--text);
+    background: color-mix(in srgb, var(--accent) 12%, var(--panel-2));
+    border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line));
+    border-radius: 10px; padding: 10px 12px; }
+  .plat b { color: var(--accent); }
   .consoles { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
   .chip { font-size: 11px; color: var(--muted); background: var(--panel-2);
     border: 1px solid var(--line); border-radius: 999px; padding: 3px 9px; }
@@ -108,9 +113,11 @@
       <option value="gba">Game Boy Advance (.gba)</option>
       <option value="segaMD">世嘉 MD / Genesis (.md .gen)</option>
       <option value="n64">N64 (.z64 .n64)</option>
+      <option value="psp">PSP (.iso .cso .pbp) · 桌面</option>
     </select>
   </div>
-  <input type="file" id="file" accept=".nes,.fds,.sfc,.smc,.gb,.gbc,.gba,.md,.gen,.sms,.n64,.z64,.v64,.pce,.zip" />
+  <div id="plat" class="plat" hidden></div>
+  <input type="file" id="file" accept=".nes,.fds,.sfc,.smc,.gb,.gbc,.gba,.md,.gen,.sms,.n64,.z64,.v64,.pce,.iso,.cso,.pbp,.zip" />
   <div class="recent" id="demos" style="margin-top:14px;">
     <div class="lab">没有 ROM?试玩内置免费游戏(开源/免费可分发,已署名作者)</div>
     <div class="items" id="demoItems"></div>
@@ -121,11 +128,12 @@
   </div>
   <div class="consoles">
     <span class="chip">FC</span><span class="chip">SFC</span><span class="chip">GB</span>
-    <span class="chip">GBC</span><span class="chip">GBA</span><span class="chip">MD</span><span class="chip">N64</span>
+    <span class="chip">GBC</span><span class="chip">GBA</span><span class="chip">MD</span><span class="chip">N64</span><span class="chip">PSP·桌面</span>
   </div>
   <div id="status"></div>
   <div class="note">
     内核由 EmulatorJS(开源)提供,已自托管在本应用内——装好即<b>完全离线</b>可玩,不依赖外部 CDN。
+    桌面浏览器会自动开启<b>线程加速</b>(N64 更流畅),并解锁 <b>PSP</b>;手机/iOS 走单线程,跑到 N64,PSP 暂不支持。大体积 PSP ISO 直接从文件读取、不占额外存储(不进「最近玩过」)。
     手机竖屏时手柄在画面<b>下方</b>,点「位置」可拖到顺手的高度;「全屏」横屏玩手柄移到两侧;「4:3 / 1:1」切电视比例或方形像素。进度自动存本机(SRAM + 存档点)。
   </div>
 </div>
@@ -133,6 +141,30 @@
 <script>
 const $ = (id) => document.getElementById(id);
 const status = (t) => { $("status").textContent = t || ""; };
+
+// ---- platform / capability detection ------------------------------------------------
+// iOS (every browser on iOS is WebKit underneath) has no stable threaded-WASM path and the
+// WebGL2 polygon_mode extension crashes its GPU process — so we keep iOS single-thread and
+// hide PSP. Threaded cores + PSP (ppsspp is a thread-only, WebGL2-only core) need the page
+// to be cross-origin isolated (SharedArrayBuffer); the SW injects COOP/COEP for that.
+const isIOS = /iP(hone|ad|od)/.test(navigator.platform) ||
+  /iPhone|iPad|iPod/.test(navigator.userAgent) ||
+  (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);   // iPadOS desktop UA
+const canThread = self.crossOriginIsolated && !isIOS;
+
+// Surface the platform story up front, and disable PSP where it can't run.
+(function showPlatformNote() {
+  const el = $("plat"); if (!el) return;
+  if (isIOS) {
+    el.hidden = false;
+    el.innerHTML = "iOS 提示:受系统限制,<b>线程加速</b>与 <b>PSP</b> 在 iOS 上不可用,已自动用单线程模式跑 FC/SFC/GB/GBA/MD/N64。要完整体验请用<b>桌面</b> Chrome / Edge。";
+    const o = document.querySelector('#coreSel option[value="psp"]');
+    if (o) { o.disabled = true; o.textContent = "PSP(iOS 不支持)"; }
+  } else if (!self.crossOriginIsolated) {
+    el.hidden = false;                       // first load: SW will reload us into isolation
+    el.textContent = "正在启用线程加速…";
+  }
+})();
 
 // ---- IndexedDB ROM library: keep several recent ROMs so any can be replayed offline.
 // EmulatorJS keeps each game's SRAM + save-states in its OWN storage keyed by game name,
@@ -167,8 +199,9 @@ const CORE_BY_EXT = {
   gb: "gb", gbc: "gb", gba: "gba",
   md: "segaMD", gen: "segaMD", sms: "segaMS",
   n64: "n64", z64: "n64", v64: "n64", pce: "pce",
+  iso: "psp", cso: "psp", pbp: "psp",
 };
-const SYS_LABEL = { nes: "FC", snes: "SFC", gb: "GB", gbc: "GBC", gba: "GBA", segaMD: "MD", segaMS: "SMS", n64: "N64", pce: "PCE" };
+const SYS_LABEL = { nes: "FC", snes: "SFC", gb: "GB", gbc: "GBC", gba: "GBA", segaMD: "MD", segaMS: "SMS", n64: "N64", pce: "PCE", psp: "PSP" };
 
 // ---- screen aspect. CRITICAL: changing #game's aspect-ratio AFTER EmulatorJS' WebGL
 // canvas exists blanks/crashes it (white on desktop, hard crash on mobile). So we set the
@@ -176,8 +209,8 @@ const SYS_LABEL = { nes: "FC", snes: "SFC", gb: "GB", gbc: "GBC", gba: "GBA", se
 // (re-launching the same game) instead of mutating live. 3 modes:
 //   auto = console display aspect → fills the box, no black bars (default)
 //   tv   = 4:3   ·   square = native pixel aspect (crisp)
-const AR_AUTO   = { nes: 1.306, snes: 1.306, gb: 1.1111, gbc: 1.1111, gba: 1.5, segaMD: 1.3333, segaMS: 1.3333, n64: 1.3333, pce: 1.3333 };
-const AR_SQUARE = { nes: 256/240, snes: 256/224, gb: 160/144, gbc: 160/144, gba: 240/160, segaMD: 320/224, segaMS: 256/192, n64: 4/3, pce: 256/239 };
+const AR_AUTO   = { nes: 1.306, snes: 1.306, gb: 1.1111, gbc: 1.1111, gba: 1.5, segaMD: 1.3333, segaMS: 1.3333, n64: 1.3333, pce: 1.3333, psp: 480/272 };
+const AR_SQUARE = { nes: 256/240, snes: 256/224, gb: 160/144, gbc: 160/144, gba: 240/160, segaMD: 320/224, segaMS: 256/192, n64: 4/3, pce: 256/239, psp: 480/272 };
 const ASPECT_ORDER = ["auto", "tv", "square"];
 const ASPECT_LABEL = { auto: "自适应", tv: "4:3", square: "1:1" };
 let aspect = localStorage.getItem("retro.aspect") || "auto";
@@ -270,15 +303,16 @@ document.addEventListener("fullscreenchange", layoutControls);
   layer.addEventListener("pointercancel", end);
 })();
 
-// Boot EmulatorJS from an ArrayBuffer + core. One-shot: the loader runs once per page.
-// Data + cores are self-hosted under ./emulatorjs/data/ → no CDN, fully offline.
+// Boot EmulatorJS from a core + game source. `src` is either an ArrayBuffer (small ROMs we
+// keep in IndexedDB) or a Blob/File (large PSP ISOs we stream straight off disk, never into
+// JS memory). One-shot: the loader runs once per page. Cores self-hosted → no CDN, offline.
 let currentSession = null;   // {kind:"demo"} | {kind:"rom", id} — for aspect-toggle re-launch
-function boot(buffer, core, name, session) {
+function boot(src, core, name, session) {
   currentSession = session || null;
   $("picker").style.display = "none";
   $("swap").style.display = $("fs").style.display = $("editPad").style.display = $("aspect").style.display = "inline-block";
   document.documentElement.style.setProperty("--game-ar", String(aspectFor(core)));   // PRE-RENDER; survives EmulatorJS init, never changed after
-  const blob = new Blob([buffer]);
+  const blob = src instanceof Blob ? src : new Blob([src]);   // File/Blob passed through → disk-streamed
   window.EJS_player = "#game";
   window.EJS_core = core;
   window.EJS_gameUrl = URL.createObjectURL(blob);
@@ -291,11 +325,19 @@ function boot(buffer, core, name, session) {
   window.EJS_color = "#9d4edd";
   window.EJS_VirtualGamepadSettings = window.EJS_VirtualGamepadSettings || {};
   // Pin the pad ON (option/element only exists on touch devices → no-op on desktop).
-  // NOTE: do NOT force webgl2 on — its WebGL2 path enables the WEBGL_polygon_mode extension,
-  // which crashed the GPU process on iOS Safari (flat memory, abrupt native crash at the title
-  // frame). The default (legacy/webgl1) path is simpler and stable on iOS; users who want it
-  // can still enable WebGL from the in-game menu.
   window.EJS_defaultOptions = Object.assign({ "virtual-gamepad": "enabled" }, window.EJS_defaultOptions);
+
+  // ---- threads (B) -----------------------------------------------------------------
+  // Threaded cores need a cross-origin-isolated page (SharedArrayBuffer). On desktop/Android
+  // that's a big win on N64 and is REQUIRED for PSP. EmulatorJS picks the "-thread" core when
+  // EJS_threads is set. iOS stays single-thread (canThread is false there) → unchanged.
+  window.EJS_threads = canThread;
+  // WebGL2: historically left OFF because the WEBGL_polygon_mode extension crashed the GPU
+  // process on iOS Safari. We now enable it ONLY where iOS is already excluded — i.e. when
+  // threading (desktop/Android), and always for PSP (ppsspp is a WebGL2-only core). This also
+  // keeps the core filename consistent: threaded build is vendored as "-thread-wasm" (WebGL2),
+  // not "-thread-legacy-wasm". iOS keeps the stable legacy/webgl1 path.
+  if (canThread || core === "psp") window.EJS_defaultOptions.webgl2Enabled = "enabled";
 
   // ---- iOS ablation flags (override via URL): ?audio=off  ?webgl=on|off  ?autostart=1 ----
   const AB = new URLSearchParams(location.search);
@@ -331,6 +373,21 @@ async function onFile(file) {
   const ext = (file.name.split(".").pop() || "").toLowerCase();
   const core = $("coreSel").value || CORE_BY_EXT[ext];
   if (!core) { status("无法从扩展名识别机型,请在右侧下拉里选一个。"); return; }
+  // PSP needs threads + WebGL2 → desktop only. Refuse early with a clear reason.
+  if (core === "psp" && !canThread) {
+    status(isIOS ? "PSP 受 iOS 系统限制无法运行,请用桌面 Chrome / Edge。"
+                 : "PSP 需要线程支持(本页未隔离)。刷新一次或改用桌面 Chrome / Edge 再试。");
+    return;
+  }
+  // Big media (PSP ISOs run 100MB–1GB+): boot straight from the File via a blob URL — the
+  // browser streams it off disk, so we never read the whole ISO into JS memory, and we skip
+  // IndexedDB persistence (would blow the storage quota / kill the tab on mobile).
+  const LARGE = 64 * 1024 * 1024;
+  if (core === "psp" || file.size > LARGE) {
+    status("加载 " + file.name + "…");
+    boot(file, core, file.name, { kind: "file", name: file.name });   // transient, not persisted
+    return;
+  }
   status("读取中…");
   const buffer = await file.arrayBuffer();
   const rec = { id: romId(file.name, file.size), name: file.name, core, buffer, ts: Date.now() };
@@ -420,10 +477,27 @@ const unlockAudio = () => {
 ["pointerdown", "touchstart", "keydown"].forEach((ev) => document.addEventListener(ev, unlockAudio, { passive: true }));
 
 if ("serviceWorker" in navigator) {
+  // coi bootstrap (B): the FIRST navigation isn't controlled by the SW, so COOP/COEP weren't
+  // applied and the page isn't cross-origin isolated yet. Once the SW takes control, reload
+  // ONCE so the navigation is re-served with the headers → crossOriginIsolated → threads/PSP.
+  // sessionStorage guard prevents a reload loop where isolation can never be achieved.
+  // Allow up to 2 reloads: visiting via the box root means the launcher SW (scope "/")
+  // controls the first navigation, then the retro SW (scope "/games/retro/") claims and a
+  // second reload is what finally serves the COI headers. Bounded so a browser that can
+  // never isolate degrades to single-thread instead of looping.
+  const coiReload = () => {
+    const n = +(sessionStorage.getItem("coiReloads") || 0);
+    if (!self.crossOriginIsolated && n < 2) {
+      sessionStorage.setItem("coiReloads", String(n + 1));
+      location.reload();
+    }
+  };
+  navigator.serviceWorker.addEventListener("controllerchange", coiReload);
   // updateViaCache:none → browser always re-fetches sw.js (don't cache the SW itself), so new
   // versions are picked up promptly; the SW's network-first HTML then serves the latest code.
   addEventListener("load", () => navigator.serviceWorker.register("./sw.js", { updateViaCache: "none" })
-    .then((reg) => reg.update()).catch(() => {}));
+    .then((reg) => { reg.update(); if (navigator.serviceWorker.controller) coiReload(); })
+    .catch(() => {}));
 }
 </script>
 </body>

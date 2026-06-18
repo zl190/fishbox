@@ -1,7 +1,26 @@
 // 复古机 service worker — self-hosted EmulatorJS, fully offline.
 // Precaches the shell + the self-hosted engine and all shipped cores on install,
 // so every console plays offline from first launch (no CDN, no prior online play).
-const CACHE = "retro-v6";
+//
+// It ALSO injects COOP/COEP into the navigation document (the "coi-serviceworker"
+// technique) so the page becomes crossOriginIsolated → SharedArrayBuffer → EmulatorJS'
+// threaded cores work even on GitHub Pages, which can't send real HTTP headers. Threads
+// give a big speed-up on the heavy cores (N64) and unlock PSP (ppsspp is thread-only).
+// Only the top-level document needs the headers: every subresource here is same-origin,
+// which COEP: require-corp permits without a CORP header — so the big core files are left
+// untouched (no re-stream cost). The page reloads itself once on first load to come up
+// isolated (see index.html). iOS keeps threads OFF at runtime, so it's unaffected.
+const CACHE = "retro-v7";
+
+// Wrap the navigation response with cross-origin isolation headers.
+function withCOI(res) {
+  if (!res) return res;
+  const h = new Headers(res.headers);
+  h.set("Cross-Origin-Opener-Policy", "same-origin");
+  h.set("Cross-Origin-Embedder-Policy", "require-corp");
+  h.set("Cross-Origin-Resource-Policy", "same-origin");
+  return new Response(res.body, { status: res.status, statusText: res.statusText, headers: h });
+}
 
 const SHELL = ["./", "./index.html", "./manifest.json",
   "./roms/tobutobugirl.gb", "./roms/libbet.gb", "./roms/ucity.gbc", "./roms/nova.nes"];
@@ -52,7 +71,10 @@ self.addEventListener("fetch", (e) => {
   const isCode = req.mode === "navigate" || url.pathname.endsWith("/") ||
     url.pathname.endsWith(".html") || url.pathname.endsWith(".json");
   if (isCode) {
-    e.respondWith(fetch(req).then(save).catch(() => caches.match(req)));
+    // Network-first; inject COOP/COEP only into the top-level document (req.mode navigate)
+    // — that's all that's needed for crossOriginIsolated; subresources are same-origin.
+    const r = fetch(req).then(save).catch(() => caches.match(req));
+    e.respondWith(req.mode === "navigate" ? r.then(withCOI) : r);
   } else {
     e.respondWith(caches.match(req).then((cached) => {
       const networked = fetch(req).then(save).catch(() => cached);
