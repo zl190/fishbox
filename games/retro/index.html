@@ -164,7 +164,7 @@ async function pruneRecent() {
 // ---- extension → EmulatorJS core ----
 const CORE_BY_EXT = {
   nes: "nes", fds: "nes", sfc: "snes", smc: "snes",
-  gb: "gb", gbc: "gbc", gba: "gba",
+  gb: "gb", gbc: "gb", gba: "gba",
   md: "segaMD", gen: "segaMD", sms: "segaMS",
   n64: "n64", z64: "n64", v64: "n64", pce: "pce",
 };
@@ -344,7 +344,7 @@ $("file").onchange = (e) => { if (e.target.files[0]) onFile(e.target.files[0]); 
 const DEMOS = [
   { file: "tobutobugirl.gb", core: "gb",  name: "Tobu Tobu Girl",  sys: "GB",  by: "Simon Larsen" },
   { file: "libbet.gb",       core: "gb",  name: "Libbet and the Magic Floor", sys: "GB", by: "Damian Yerrick" },
-  { file: "ucity.gbc",       core: "gbc", name: "µCity（城市建造）", sys: "GBC", by: "AntonioND" },
+  { file: "ucity.gbc",       core: "gb",  name: "µCity（城市建造）", sys: "GBC", by: "AntonioND" },
   { file: "nova.nes",        core: "nes", name: "Nova the Squirrel", sys: "FC", by: "NovaSquirrel" },
 ];
 async function bootDemo(d) {
