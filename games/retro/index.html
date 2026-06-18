@@ -111,8 +111,10 @@
     </select>
   </div>
   <input type="file" id="file" accept=".nes,.fds,.sfc,.smc,.gb,.gbc,.gba,.md,.gen,.sms,.n64,.z64,.v64,.pce,.zip" />
-  <button class="btn ghost" id="demo" style="margin-top:10px;">▶ 没有 ROM?试玩内置 Demo</button>
-  <div class="credit">Demo:《Tobu Tobu Girl》by <a href="https://tangramgames.dk/tobutobugirl/" target="_blank" rel="noopener">Simon Larsen / Tangram Games</a> · 免费开源(CC-BY)</div>
+  <div class="recent" id="demos" style="margin-top:14px;">
+    <div class="lab">没有 ROM?试玩内置免费游戏(开源/免费可分发,已署名作者)</div>
+    <div class="items" id="demoItems"></div>
+  </div>
   <div class="recent" id="recent" hidden>
     <div class="lab">最近玩过(进度自动保存,点一下继续)</div>
     <div class="items" id="recentItems"></div>
@@ -329,14 +331,28 @@ async function onFile(file) {
 $("choose").onclick = () => $("file").click();
 $("file").onchange = (e) => { if (e.target.files[0]) onFile(e.target.files[0]); };
 
-// Bundled free demo (Tobu Tobu Girl, GB — MIT code / CC-BY assets, redistributable w/ credit).
-$("demo").onclick = async () => {
-  status("加载 Demo…");
+// Bundled free demos — all open-source / freely redistributable homebrew (see CREDITS.md).
+const DEMOS = [
+  { file: "tobutobugirl.gb", core: "gb",  name: "Tobu Tobu Girl",  sys: "GB",  by: "Simon Larsen" },
+  { file: "libbet.gb",       core: "gb",  name: "Libbet and the Magic Floor", sys: "GB", by: "Damian Yerrick" },
+  { file: "ucity.gbc",       core: "gbc", name: "µCity（城市建造）", sys: "GBC", by: "AntonioND" },
+  { file: "nova.nes",        core: "nes", name: "Nova the Squirrel", sys: "FC", by: "NovaSquirrel" },
+];
+async function bootDemo(d) {
+  status("加载 " + d.name + "…");
   try {
-    const buf = await fetch("./roms/tobutobugirl.gb").then((r) => r.arrayBuffer());
-    boot(buf, "gb", "Tobu Tobu Girl", { kind: "demo" });
-  } catch (e) { status("Demo 加载失败,请检查网络后重试。"); }
-};
+    const buf = await fetch("./roms/" + d.file).then((r) => r.arrayBuffer());
+    boot(buf, d.core, d.name, { kind: "demo", file: d.file, core: d.core, name: d.name });
+  } catch (e) { status(d.name + " 加载失败,请检查网络后重试。"); }
+}
+$("demoItems").replaceChildren(...DEMOS.map((d) => {
+  const row = document.createElement("button");
+  row.className = "rgame";
+  row.innerHTML = `<span class="sys">${d.sys}</span><span class="nm"></span>`;
+  row.querySelector(".nm").textContent = `${d.name} · ${d.by}`;
+  row.onclick = () => bootDemo(d);
+  return row;
+}));
 
 // Render the recent-games library (most recent first).
 async function renderRecent() {
@@ -372,8 +388,8 @@ renderRecent();
   try {
     const s = JSON.parse(raw);
     if (s.kind === "demo") {
-      const buf = await fetch("./roms/tobutobugirl.gb").then((r) => r.arrayBuffer());
-      boot(buf, "gb", "Tobu Tobu Girl", s);
+      const buf = await fetch("./roms/" + (s.file || "tobutobugirl.gb")).then((r) => r.arrayBuffer());
+      boot(buf, s.core || "gb", s.name || "Demo", s);
     } else if (s.kind === "rom") {
       const rec = await idb("readonly", (st) => st.get(s.id));
       if (rec && rec.buffer) boot(rec.buffer, rec.core, rec.name, s);

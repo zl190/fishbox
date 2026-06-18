@@ -1,9 +1,10 @@
 // 复古机 service worker — self-hosted EmulatorJS, fully offline.
 // Precaches the shell + the self-hosted engine and all shipped cores on install,
 // so every console plays offline from first launch (no CDN, no prior online play).
-const CACHE = "retro-v5";
+const CACHE = "retro-v6";
 
-const SHELL = ["./", "./index.html", "./manifest.json", "./roms/tobutobugirl.gb"];
+const SHELL = ["./", "./index.html", "./manifest.json",
+  "./roms/tobutobugirl.gb", "./roms/libbet.gb", "./roms/ucity.gbc", "./roms/nova.nes"];
 
 const EJS = "./emulatorjs/data/";
 const ENGINE = [
@@ -12,10 +13,9 @@ const ENGINE = [
   "compression/extract7z.js", "compression/extractzip.js",
   "compression/libunrar.js", "compression/libunrar.wasm",
 ].map((f) => EJS + f);
-// Precache ONLY the demo's core (gambatte) on install — precaching all 6 cores (14MB) at
-// install time spiked memory on mobile and crashed the tab. Other cores cache on demand
-// (stale-while-revalidate below) on first play, so each console is offline after one online run.
-const CORES = ["gambatte"].flatMap((c) => [
+// Precache only the cores the demos use (gambatte=GB/GBC, fceumm=NES) — NOT all 6 (14MB),
+// which spiked memory on mobile. Other cores cache on demand (SWR below) on first play.
+const CORES = ["gambatte", "fceumm"].flatMap((c) => [
   `${EJS}cores/${c}-wasm.data`,
   `${EJS}cores/${c}-legacy-wasm.data`,
   `${EJS}cores/reports/${c}.json`,
