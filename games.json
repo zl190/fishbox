@@ -5,6 +5,12 @@
       "name": "方块盒",
       "short": "",
       "_dev": "一张网格,四种消法;共享 grid-core 引擎。仅开发向,不展示给用户。"
+    },
+    {
+      "id": "retro",
+      "name": "复古机厅",
+      "short": "外接开源模拟器内核,玩你本地的老游戏 ROM",
+      "_dev": "嵌第三方 WASM 内核(EmulatorJS),不套 grid-core;ROM 由用户本地上传,不内置不分发。"
     }
   ],
   "games": [
@@ -52,6 +58,15 @@
       "color": "#8e4ec6",
       "tags": ["合并", "数字"],
       "status": "planned"
+    },
+    {
+      "id": "retro",
+      "name": "复古机",
+      "family": "retro",
+      "short": "上传本地 ROM,FC/SFC/GB/GBA/MD/N64 在浏览器里跑。",
+      "url": "./games/retro/",
+      "color": "#9d4edd",
+      "tags": ["模拟器", "本地ROM"]
     }
   ]
 }

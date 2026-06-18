@@ -1,0 +1,321 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+<meta name="theme-color" content="#0e1116" />
+<title>复古机</title>
+<link rel="manifest" href="./manifest.json" />
+<link rel="icon" href="../../icon-192.png" />
+<style>
+  :root { --bg:#0e1116; --panel:#11151c; --panel-2:#161b24; --line:#222a36;
+    --text:#e6edf3; --muted:#8b98a9; --accent:#9d4edd; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  body { padding: max(14px, env(safe-area-inset-top)) 14px calc(20px + env(safe-area-inset-bottom));
+    max-width: 520px; margin: 0 auto; }
+  header { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+  .back { color: var(--muted); text-decoration: none; font-size: 20px; padding: 4px; }
+  h1 { font-size: 18px; margin: 0; font-weight: 600; }
+
+  /* Emulator mount: full-width 4:3 box, black so letterboxing looks intentional. */
+  #game { width: 100%; aspect-ratio: 4 / 3; background: #000; border-radius: 12px; overflow: hidden; }
+  #game:empty { display: none; }
+
+  .pick { background: var(--panel); border: 1px solid var(--line); border-radius: 16px;
+    padding: 18px; margin-top: 4px; }
+  .pick h2 { font-size: 15px; margin: 0 0 6px; }
+  .pick p { color: var(--muted); font-size: 12.5px; margin: 0 0 14px; line-height: 1.6; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .btn { display: inline-flex; align-items: center; gap: 7px; cursor: pointer; border: 1px solid var(--accent);
+    background: color-mix(in srgb, var(--accent) 16%, var(--panel)); color: var(--text);
+    border-radius: 12px; padding: 11px 16px; font-size: 14px; font-weight: 600; }
+  .btn:active { transform: scale(.98); }
+  .btn.ghost { border-color: var(--line); background: var(--panel-2); font-weight: 500; }
+  select { background: var(--panel-2); color: var(--text); border: 1px solid var(--line);
+    border-radius: 10px; padding: 10px 12px; font-size: 13.5px; }
+  input[type=file] { display: none; }
+  .resume { margin-top: 12px; font-size: 12.5px; color: var(--muted); }
+  .resume b { color: var(--text); font-weight: 600; }
+  .note { color: var(--muted); font-size: 11.5px; line-height: 1.7; margin-top: 16px;
+    padding-top: 12px; border-top: 1px solid var(--line); }
+  .consoles { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .chip { font-size: 11px; color: var(--muted); background: var(--panel-2);
+    border: 1px solid var(--line); border-radius: 999px; padding: 3px 9px; }
+  #status { color: var(--muted); font-size: 12.5px; margin-top: 10px; min-height: 1.2em; }
+  header { justify-content: flex-start; }
+  .hbtn { display: none; cursor: pointer; font-size: 13px; color: var(--muted);
+    background: var(--panel-2); border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px; }
+  .hbtn:active { transform: scale(.97); }
+  #editPad { margin-left: auto; }       /* first right-side button pushes the cluster over */
+  #editPad.active { color: var(--text); border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 16%, var(--panel)); }
+
+  /* Portrait control band: a transparent positioning container the built-in virtual pad
+     is re-parented into, BELOW the screen, so controls never cover the game. The pad anchors
+     to the band's bottom; JS sizes the band to leave a thumb-comfortable bottom reserve.
+     Hidden in fullscreen (pad overlays the margins instead). */
+  #touchband { display: none; position: relative; width: 100%;
+    background: transparent; touch-action: none; }
+  /* Edit overlay: shown only while customizing, captures the drag and blocks button input. */
+  #dragLayer { display: none; position: absolute; inset: 0; z-index: 5; align-items: center; justify-content: center;
+    border: 2px dashed color-mix(in srgb, var(--accent) 65%, var(--line)); border-radius: 16px;
+    background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--text);
+    font-size: 13px; font-weight: 600; touch-action: none; cursor: grab; user-select: none; }
+  #touchband.editing #dragLayer { display: flex; }
+
+  /* Recent games library */
+  .recent { margin-top: 14px; }
+  .recent .lab { font-size: 11.5px; color: var(--muted); margin: 0 2px 8px; }
+  .recent .items { display: flex; flex-direction: column; gap: 8px; }
+  .rgame { display: flex; align-items: center; gap: 10px; cursor: pointer; text-align: left;
+    background: var(--panel-2); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; color: inherit; }
+  .rgame:active { transform: scale(.99); }
+  .rgame .sys { font-size: 10px; font-weight: 700; color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, var(--panel));
+    border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--line)); border-radius: 6px; padding: 3px 6px; min-width: 38px; text-align: center; }
+  .rgame .nm { flex: 1; font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .rgame .del { color: var(--muted); font-size: 16px; padding: 0 4px; border: 0; background: none; cursor: pointer; }
+</style>
+</head>
+<body>
+<header>
+  <a class="back" href="../../" aria-label="返回盒子">‹</a><h1>复古机</h1>
+  <button id="editPad" class="hbtn">⇅ 调位置</button>
+  <button id="swap" class="hbtn">↻ 换 ROM</button>
+  <button id="fs" class="hbtn">⛶ 全屏</button>
+</header>
+
+<div id="game"></div>
+<div id="touchband"><div id="dragLayer">↕ 拖动调整手柄高度</div></div>
+
+<div class="pick" id="picker">
+  <h2>玩你本地的老游戏</h2>
+  <p>选一个本机的 ROM 文件,在浏览器里直接跑。ROM 只存在你这台设备上,不上传、不分发。</p>
+  <div class="row">
+    <button class="btn" id="choose">⤓ 选择 ROM 文件</button>
+    <select id="coreSel" aria-label="指定机型(可选)">
+      <option value="">按扩展名自动识别</option>
+      <option value="nes">红白机 FC / NES (.nes)</option>
+      <option value="snes">超任 SFC / SNES (.sfc .smc)</option>
+      <option value="gb">Game Boy (.gb)</option>
+      <option value="gbc">Game Boy Color (.gbc)</option>
+      <option value="gba">Game Boy Advance (.gba)</option>
+      <option value="segaMD">世嘉 MD / Genesis (.md .gen)</option>
+      <option value="n64">N64 (.z64 .n64)</option>
+    </select>
+  </div>
+  <input type="file" id="file" accept=".nes,.fds,.sfc,.smc,.gb,.gbc,.gba,.md,.gen,.sms,.n64,.z64,.v64,.pce,.zip" />
+  <div class="recent" id="recent" hidden>
+    <div class="lab">最近玩过(进度自动保存,点一下继续)</div>
+    <div class="items" id="recentItems"></div>
+  </div>
+  <div class="consoles">
+    <span class="chip">FC</span><span class="chip">SFC</span><span class="chip">GB</span>
+    <span class="chip">GBC</span><span class="chip">GBA</span><span class="chip">MD</span><span class="chip">N64</span>
+  </div>
+  <div id="status"></div>
+  <div class="note">
+    内核由 EmulatorJS(开源)提供,已自托管在本应用内——装好即<b>完全离线</b>可玩,不依赖外部 CDN。
+    手机竖屏时手柄在画面<b>下方</b>,点「⇅ 调位置」可拖到顺手的高度;点「⛶ 全屏」横屏玩,手柄移到两侧。进度自动存本机(SRAM + 存档点)。
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const status = (t) => { $("status").textContent = t || ""; };
+
+// ---- IndexedDB ROM library: keep several recent ROMs so any can be replayed offline.
+// EmulatorJS keeps each game's SRAM + save-states in its OWN storage keyed by game name,
+// so progress survives switching; this store just remembers the ROM bytes to re-launch. ----
+const DB = "fishbox-retro", STORE = "rom", MAX_RECENT = 12;
+function idb(mode, fn) {
+  return new Promise((resolve, reject) => {
+    const r = indexedDB.open(DB, 1);
+    r.onupgradeneeded = () => r.result.createObjectStore(STORE);
+    r.onerror = () => reject(r.error);
+    r.onsuccess = () => {
+      const tx = r.result.transaction(STORE, mode);
+      const out = fn(tx.objectStore(STORE));
+      tx.oncomplete = () => resolve(out && "result" in out ? out.result : out);
+      tx.onerror = () => reject(tx.error);
+    };
+  });
+}
+const romId = (name, size) => `${name}::${size}`;
+const putRom = (rec) => idb("readwrite", (s) => s.put(rec, rec.id));
+const delRom = (id) => idb("readwrite", (s) => s.delete(id));
+const allRoms = () => idb("readonly", (s) => s.getAll());
+async function pruneRecent() {
+  const all = (await allRoms()) || [];
+  all.sort((a, b) => (b.ts || 0) - (a.ts || 0));
+  for (const r of all.slice(MAX_RECENT)) await delRom(r.id);
+}
+
+// ---- extension → EmulatorJS core ----
+const CORE_BY_EXT = {
+  nes: "nes", fds: "nes", sfc: "snes", smc: "snes",
+  gb: "gb", gbc: "gbc", gba: "gba",
+  md: "segaMD", gen: "segaMD", sms: "segaMS",
+  n64: "n64", z64: "n64", v64: "n64", pce: "pce",
+};
+const SYS_LABEL = { nes: "FC", snes: "SFC", gb: "GB", gbc: "GBC", gba: "GBA", segaMD: "MD", segaMS: "SMS", n64: "N64", pce: "PCE" };
+
+// ---- adaptive on-screen controls ----------------------------------------------------
+// EmulatorJS' built-in virtual pad is correctly wired per-console but is an overlay meant
+// for fullscreen. Windowed (esp. portrait) it covers the game. So: re-parent that same pad
+// into a band BELOW the screen when windowed, and let it overlay (on the margins) in
+// fullscreen. Re-using the built-in pad means input mapping stays correct for every core.
+// User-tuned vertical nudge for the control band (px; negative = higher). Persisted.
+let padY = +(localStorage.getItem("retro.padY") || 0);
+// Bounded so the cluster can't be dragged off-screen; the user positions it visually.
+const clampPadY = (v) => Math.max(-Math.round(window.innerHeight * 0.45), Math.min(v, 80));
+function layoutControls() {
+  const vpp = document.querySelector(".ejs_virtualGamepad_parent");
+  const game = $("game"), band = $("touchband");
+  if (!vpp || !game.querySelector("canvas")) return;   // not started yet
+  if (document.fullscreenElement) {
+    if (vpp.parentElement !== game) game.appendChild(vpp);
+    vpp.style.cssText = "";                              // EmulatorJS' own overlay positioning
+    band.style.display = "none";
+  } else {
+    if (vpp.parentElement !== band) band.appendChild(vpp);
+    vpp.style.cssText = "position:absolute; inset:0; width:100%; height:100%;";
+    // Leave a thumb-comfortable default reserve (pad anchors to the band bottom); the user's
+    // saved padY nudges it from there via "调位置".
+    const RESERVE = 64;
+    band.style.height = Math.max(200, window.innerHeight - game.getBoundingClientRect().bottom - RESERVE) + "px";
+    band.style.transform = `translateY(${padY}px)`;
+    band.dataset.py = padY;
+    band.style.display = "block";
+  }
+}
+addEventListener("resize", layoutControls);
+addEventListener("orientationchange", layoutControls);
+document.addEventListener("fullscreenchange", layoutControls);
+
+// ---- "调位置": unlock to drag the control band to a comfortable height; persists. ----
+(function setupPadEdit() {
+  const editBtn = $("editPad"), band = $("touchband"), layer = $("dragLayer");
+  let editing = false, dragging = false, startY = 0, startPadY = 0;
+  // Wrap the dashed outline tightly around the actual buttons (the band itself spans a
+  // larger control field — taller consoles put shoulder buttons up top — but only the
+  // buttons should be outlined while editing).
+  function fitDragLayer() {
+    const els = band.querySelectorAll(".ejs_virtualGamepad_button, .ejs_dpad_main");
+    if (!els.length) { layer.style.inset = "0"; return; }
+    const b = band.getBoundingClientRect();
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    els.forEach((el) => { const r = el.getBoundingClientRect();
+      minX = Math.min(minX, r.left); minY = Math.min(minY, r.top);
+      maxX = Math.max(maxX, r.right); maxY = Math.max(maxY, r.bottom); });
+    const pad = 12;
+    layer.style.inset = "auto";
+    layer.style.left = (minX - b.left - pad) + "px";
+    layer.style.top = (minY - b.top - pad) + "px";
+    layer.style.width = (maxX - minX + pad * 2) + "px";
+    layer.style.height = (maxY - minY + pad * 2) + "px";
+  }
+  editBtn.onclick = () => {
+    editing = !editing;
+    if (editing) fitDragLayer();                          // size the outline before showing it
+    band.classList.toggle("editing", editing);            // shows #dragLayer, blocks button input
+    editBtn.classList.toggle("active", editing);
+    editBtn.textContent = editing ? "✓ 完成" : "⇅ 调位置";
+    if (!editing) localStorage.setItem("retro.padY", String(padY));
+  };
+  const apply = () => { band.style.transform = `translateY(${padY}px)`; band.dataset.py = padY; };
+  layer.addEventListener("pointerdown", (e) => {
+    dragging = true; startY = e.clientY; startPadY = padY;
+    layer.setPointerCapture && layer.setPointerCapture(e.pointerId); e.preventDefault();
+  });
+  layer.addEventListener("pointermove", (e) => {
+    if (!dragging) return;
+    padY = clampPadY(startPadY + (e.clientY - startY)); apply();
+  });
+  const end = () => { if (dragging) { dragging = false; localStorage.setItem("retro.padY", String(padY)); } };
+  layer.addEventListener("pointerup", end);
+  layer.addEventListener("pointercancel", end);
+})();
+
+// Boot EmulatorJS from an ArrayBuffer + core. One-shot: the loader runs once per page.
+// Data + cores are self-hosted under ./emulatorjs/data/ → no CDN, fully offline.
+function boot(buffer, core, name) {
+  $("picker").style.display = "none";
+  $("swap").style.display = $("fs").style.display = $("editPad").style.display = "inline-block";
+  const blob = new Blob([buffer]);
+  window.EJS_player = "#game";
+  window.EJS_core = core;
+  window.EJS_gameUrl = URL.createObjectURL(blob);
+  window.EJS_gameName = name || "ROM";          // keys EmulatorJS' per-game SRAM + save states
+  window.EJS_pathtodata = "./emulatorjs/data/";
+  window.EJS_startOnLoaded = true;
+  window.EJS_color = "#9d4edd";
+  window.EJS_VirtualGamepadSettings = window.EJS_VirtualGamepadSettings || {};
+  // Pin the pad ON (option/element only exists on touch devices → no-op on desktop).
+  window.EJS_defaultOptions = Object.assign({ "virtual-gamepad": "enabled" }, window.EJS_defaultOptions);
+  const s = document.createElement("script");
+  s.src = "./emulatorjs/data/loader.js";
+  document.body.appendChild(s);
+  // Poll for the pad (created once the core starts), then take over its placement.
+  // Re-apply a few times: EmulatorJS may (re)toggle the pad during its own startup.
+  const poll = setInterval(() => {
+    if (document.querySelector(".ejs_virtualGamepad_parent")) {
+      clearInterval(poll);
+      layoutControls();
+      [400, 1200, 2500].forEach((ms) => setTimeout(layoutControls, ms));
+    }
+  }, 120);
+  setTimeout(() => clearInterval(poll), 25000);
+}
+
+// "换 ROM" → back to the picker. reload is the clean reset (EmulatorJS has no destroy());
+// the picker's recent list lets you jump straight back into any game, progress intact.
+$("swap").onclick = () => location.reload();
+$("fs").onclick = () => { const g = $("game"); (g.requestFullscreen || g.webkitRequestFullscreen || (() => {})).call(g); };
+
+async function onFile(file) {
+  const ext = (file.name.split(".").pop() || "").toLowerCase();
+  const core = $("coreSel").value || CORE_BY_EXT[ext];
+  if (!core) { status("无法从扩展名识别机型,请在右侧下拉里选一个。"); return; }
+  status("读取中…");
+  const buffer = await file.arrayBuffer();
+  const rec = { id: romId(file.name, file.size), name: file.name, core, buffer, ts: Date.now() };
+  try { await putRom(rec); await pruneRecent(); } catch (e) { /* private mode: still playable this session */ }
+  boot(buffer, core, file.name);
+}
+$("choose").onclick = () => $("file").click();
+$("file").onchange = (e) => { if (e.target.files[0]) onFile(e.target.files[0]); };
+
+// Render the recent-games library (most recent first).
+async function renderRecent() {
+  let list = [];
+  try { list = (await allRoms()) || []; } catch (e) { return; }
+  list.sort((a, b) => (b.ts || 0) - (a.ts || 0));
+  const box = $("recent"), items = $("recentItems");
+  if (!list.length) { box.hidden = true; return; }
+  box.hidden = false;
+  items.replaceChildren(...list.map((rec) => {
+    const row = document.createElement("button");
+    row.className = "rgame";
+    row.innerHTML = `<span class="sys">${SYS_LABEL[rec.core] || rec.core}</span><span class="nm"></span><span class="del" title="移除">✕</span>`;
+    row.querySelector(".nm").textContent = rec.name;
+    row.onclick = (ev) => {
+      if (ev.target.classList.contains("del")) {
+        delRom(rec.id).then(renderRecent);   // remove from library (game's saves are kept)
+        return;
+      }
+      rec.ts = Date.now(); putRom(rec).catch(() => {});
+      boot(rec.buffer, rec.core, rec.name);
+    };
+    return row;
+  }));
+}
+renderRecent();
+
+if ("serviceWorker" in navigator) {
+  addEventListener("load", () => navigator.serviceWorker.register("./sw.js").catch(() => {}));
+}
+</script>
+</body>
+</html>
