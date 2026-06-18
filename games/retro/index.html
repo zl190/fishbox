@@ -282,7 +282,10 @@ function boot(buffer, core, name, session) {
   window.EJS_gameUrl = URL.createObjectURL(blob);
   window.EJS_gameName = name || "ROM";          // keys EmulatorJS' per-game SRAM + save states
   window.EJS_pathtodata = "./emulatorjs/data/";
-  window.EJS_startOnLoaded = true;
+  // Touch devices tap EmulatorJS' Play button so the WebAudio context is created INSIDE a user
+  // gesture — iOS Safari otherwise crashes when the game first outputs audio (title screen, ~5s).
+  // Desktop has no such rule, so keep its one-tap auto-start.
+  window.EJS_startOnLoaded = !(navigator.maxTouchPoints > 0);
   window.EJS_color = "#9d4edd";
   window.EJS_VirtualGamepadSettings = window.EJS_VirtualGamepadSettings || {};
   // Pin the pad ON (option/element only exists on touch devices → no-op on desktop).
@@ -290,16 +293,17 @@ function boot(buffer, core, name, session) {
   const s = document.createElement("script");
   s.src = "./emulatorjs/data/loader.js";
   document.body.appendChild(s);
-  // Poll for the pad (created once the core starts), then place it. layoutControls only sets
-  // styles — it never resizes the canvas, so it's safe to call repeatedly.
+  // Self-healing placement: EmulatorJS (re)attaches the pad to #game when the game actually
+  // STARTS — which, with the touch Play button, is AFTER a one-shot poll would have fired. So
+  // keep re-placing: whenever (windowed) the pad isn't in our band, move it back. Cheap
+  // (layoutControls only sets styles, never resizes) and idempotent once placed.
+  let elapsed = 0;
   const poll = setInterval(() => {
-    if (document.querySelector(".ejs_virtualGamepad_parent")) {
-      clearInterval(poll);
-      layoutControls();
-      [400, 1200, 2500].forEach((ms) => setTimeout(layoutControls, ms));
-    }
-  }, 120);
-  setTimeout(() => clearInterval(poll), 25000);
+    elapsed += 200;
+    const vpp = document.querySelector(".ejs_virtualGamepad_parent");
+    if (vpp && !document.fullscreenElement && vpp.parentElement !== $("touchband")) layoutControls();
+    if (elapsed > 60000) clearInterval(poll);
+  }, 200);
 }
 
 // "换 ROM" → back to the picker. reload is the clean reset (EmulatorJS has no destroy());
