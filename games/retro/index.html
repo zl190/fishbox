@@ -289,7 +289,12 @@ function boot(buffer, core, name, session) {
   window.EJS_color = "#9d4edd";
   window.EJS_VirtualGamepadSettings = window.EJS_VirtualGamepadSettings || {};
   // Pin the pad ON (option/element only exists on touch devices → no-op on desktop).
-  window.EJS_defaultOptions = Object.assign({ "virtual-gamepad": "enabled" }, window.EJS_defaultOptions);
+  // webgl2Enabled defaults to "off" (the built-in default computes to null) → force it on so iOS
+  // uses the same WebGL2 render path as desktop; auto-falls-back to legacy if the device lacks WebGL2.
+  window.EJS_defaultOptions = Object.assign(
+    { "virtual-gamepad": "enabled", "webgl2Enabled": "enabled" },
+    window.EJS_defaultOptions,
+  );
   const s = document.createElement("script");
   s.src = "./emulatorjs/data/loader.js";
   document.body.appendChild(s);
