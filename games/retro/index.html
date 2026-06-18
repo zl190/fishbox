@@ -197,10 +197,10 @@ function layoutControls() {
   } else {
     if (vpp.parentElement !== band) band.appendChild(vpp);
     vpp.style.cssText = "position:absolute; inset:0; width:100%; height:100%;";
-    // Leave a thumb-comfortable default reserve (pad anchors to the band bottom); the user's
-    // saved padY nudges it from there via "调位置".
-    const RESERVE = 64;
-    band.style.height = Math.max(200, window.innerHeight - game.getBoundingClientRect().bottom - RESERVE) + "px";
+    // Default: park the control cluster ~1/3 of the viewport up from the bottom (pad anchors
+    // to the band bottom; larger reserve = higher). The user nudges from here via "位置".
+    const RESERVE = Math.max(64, Math.round(window.innerHeight * 0.2));
+    band.style.height = Math.max(160, window.innerHeight - game.getBoundingClientRect().bottom - RESERVE) + "px";
     band.style.transform = `translateY(${padY}px)`;
     band.dataset.py = padY;
     band.style.display = "block";
