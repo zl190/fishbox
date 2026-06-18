@@ -296,6 +296,15 @@ function boot(buffer, core, name, session) {
   // frame). The default (legacy/webgl1) path is simpler and stable on iOS; users who want it
   // can still enable WebGL from the in-game menu.
   window.EJS_defaultOptions = Object.assign({ "virtual-gamepad": "enabled" }, window.EJS_defaultOptions);
+
+  // ---- iOS ablation flags (override via URL): ?audio=off  ?webgl=on|off  ?autostart=1 ----
+  const AB = new URLSearchParams(location.search);
+  if (AB.get("webgl") === "on") window.EJS_defaultOptions.webgl2Enabled = "enabled";
+  if (AB.get("webgl") === "off") window.EJS_defaultOptions.webgl2Enabled = "disabled";
+  if (AB.get("autostart") === "1") window.EJS_startOnLoaded = true;
+  window.__noAudio = AB.get("audio") === "off";
+  if (window.__noAudio) window.EJS_volume = 0;   // + unlockAudio is skipped + ctx kept suspended (poll below)
+
   const s = document.createElement("script");
   s.src = "./emulatorjs/data/loader.js";
   document.body.appendChild(s);
@@ -308,6 +317,7 @@ function boot(buffer, core, name, session) {
     elapsed += 200;
     const vpp = document.querySelector(".ejs_virtualGamepad_parent");
     if (vpp && !document.fullscreenElement && vpp.parentElement !== $("touchband")) layoutControls();
+    if (window.__noAudio) { const c = audioCtxOf(); if (c && c.state === "running") c.suspend(); }   // ablation: keep audio off
     if (elapsed > 60000) clearInterval(poll);
   }, 200);
 }
@@ -398,12 +408,14 @@ renderRecent();
 
 // Mobile (esp. iOS) keeps WebAudio suspended until a user gesture. EmulatorJS' audio context
 // lives at Module.AL.currentCtx.audioCtx — resume it on the first touch/key so the game has sound.
+const audioCtxOf = () => {
+  try { const al = window.EJS_emulator && window.EJS_emulator.Module && window.EJS_emulator.Module.AL;
+    return al && al.currentCtx && al.currentCtx.audioCtx; } catch (e) { return null; }
+};
 const unlockAudio = () => {
-  try {
-    const al = window.EJS_emulator && window.EJS_emulator.Module && window.EJS_emulator.Module.AL;
-    const ctx = al && al.currentCtx && al.currentCtx.audioCtx;
-    if (ctx && ctx.state === "suspended") ctx.resume();
-  } catch (e) { /* not ready yet */ }
+  if (window.__noAudio) return;   // ablation: leave audio off
+  const ctx = audioCtxOf();
+  if (ctx && ctx.state === "suspended") ctx.resume();
 };
 ["pointerdown", "touchstart", "keydown"].forEach((ev) => document.addEventListener(ev, unlockAudio, { passive: true }));
 
