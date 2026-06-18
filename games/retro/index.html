@@ -372,6 +372,17 @@ renderRecent();
   } catch (e) { /* fall through to picker */ }
 })();
 
+// Mobile (esp. iOS) keeps WebAudio suspended until a user gesture. EmulatorJS' audio context
+// lives at Module.AL.currentCtx.audioCtx — resume it on the first touch/key so the game has sound.
+const unlockAudio = () => {
+  try {
+    const al = window.EJS_emulator && window.EJS_emulator.Module && window.EJS_emulator.Module.AL;
+    const ctx = al && al.currentCtx && al.currentCtx.audioCtx;
+    if (ctx && ctx.state === "suspended") ctx.resume();
+  } catch (e) { /* not ready yet */ }
+};
+["pointerdown", "touchstart", "keydown"].forEach((ev) => document.addEventListener(ev, unlockAudio, { passive: true }));
+
 if ("serviceWorker" in navigator) {
   addEventListener("load", () => navigator.serviceWorker.register("./sw.js").catch(() => {}));
 }
