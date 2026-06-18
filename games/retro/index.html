@@ -15,7 +15,7 @@
     font: 16px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
   body { padding: max(14px, env(safe-area-inset-top)) 14px calc(20px + env(safe-area-inset-bottom));
     max-width: 520px; margin: 0 auto; }
-  header { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+  header { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; row-gap: 6px; margin-bottom: 14px; }
   .back { color: var(--muted); text-decoration: none; font-size: 20px; padding: 4px; }
   h1 { font-size: 18px; margin: 0; font-weight: 600; }
 
@@ -45,10 +45,10 @@
     border: 1px solid var(--line); border-radius: 999px; padding: 3px 9px; }
   #status { color: var(--muted); font-size: 12.5px; margin-top: 10px; min-height: 1.2em; }
   header { justify-content: flex-start; }
-  .hbtn { display: none; cursor: pointer; font-size: 13px; color: var(--muted);
-    background: var(--panel-2); border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px; }
+  .hbtn { display: none; cursor: pointer; font-size: 12.5px; color: var(--muted);
+    background: var(--panel-2); border: 1px solid var(--line); border-radius: 999px; padding: 5px 10px; white-space: nowrap; }
   .hbtn:active { transform: scale(.97); }
-  #editPad { margin-left: auto; }       /* first right-side button pushes the cluster over */
+  #aspect { margin-left: auto; }        /* first right-side button pushes the cluster over */
   #editPad.active { color: var(--text); border-color: var(--accent);
     background: color-mix(in srgb, var(--accent) 16%, var(--panel)); }
 
@@ -81,9 +81,10 @@
 <body>
 <header>
   <a class="back" href="../../" aria-label="返回盒子">‹</a><h1>复古机</h1>
-  <button id="editPad" class="hbtn">⇅ 调位置</button>
-  <button id="swap" class="hbtn">↻ 换 ROM</button>
-  <button id="fs" class="hbtn">⛶ 全屏</button>
+  <button id="aspect" class="hbtn">4:3</button>
+  <button id="editPad" class="hbtn">位置</button>
+  <button id="swap" class="hbtn">换ROM</button>
+  <button id="fs" class="hbtn">全屏</button>
 </header>
 
 <div id="game"></div>
@@ -117,7 +118,7 @@
   <div id="status"></div>
   <div class="note">
     内核由 EmulatorJS(开源)提供,已自托管在本应用内——装好即<b>完全离线</b>可玩,不依赖外部 CDN。
-    手机竖屏时手柄在画面<b>下方</b>,点「⇅ 调位置」可拖到顺手的高度;点「⛶ 全屏」横屏玩,手柄移到两侧。进度自动存本机(SRAM + 存档点)。
+    手机竖屏时手柄在画面<b>下方</b>,点「位置」可拖到顺手的高度;「全屏」横屏玩手柄移到两侧;「4:3 / 1:1」切电视比例或方形像素。进度自动存本机(SRAM + 存档点)。
   </div>
 </div>
 
@@ -160,6 +161,21 @@ const CORE_BY_EXT = {
   n64: "n64", z64: "n64", v64: "n64", pce: "pce",
 };
 const SYS_LABEL = { nes: "FC", snes: "SFC", gb: "GB", gbc: "GBC", gba: "GBA", segaMD: "MD", segaMS: "SMS", n64: "N64", pce: "PCE" };
+
+// ---- screen aspect: 4:3 (TV-correct, wide pixels) ↔ square pixels (taller, crisper) ----
+const ASPECTS = { tv: "4 / 3", square: "256 / 240" };
+let aspect = localStorage.getItem("retro.aspect") || "tv";
+function applyAspect() {
+  $("game").style.aspectRatio = ASPECTS[aspect] || ASPECTS.tv;
+  $("aspect").textContent = aspect === "square" ? "1:1" : "4:3";
+  window.dispatchEvent(new Event("resize"));   // EmulatorJS refits the canvas; band re-lays out
+}
+$("aspect").onclick = () => {
+  aspect = aspect === "tv" ? "square" : "tv";
+  localStorage.setItem("retro.aspect", aspect);
+  applyAspect();
+};
+applyAspect();   // apply the persisted choice on load
 
 // ---- adaptive on-screen controls ----------------------------------------------------
 // EmulatorJS' built-in virtual pad is correctly wired per-console but is an overlay meant
@@ -221,7 +237,7 @@ document.addEventListener("fullscreenchange", layoutControls);
     if (editing) fitDragLayer();                          // size the outline before showing it
     band.classList.toggle("editing", editing);            // shows #dragLayer, blocks button input
     editBtn.classList.toggle("active", editing);
-    editBtn.textContent = editing ? "✓ 完成" : "⇅ 调位置";
+    editBtn.textContent = editing ? "✓完成" : "位置";
     if (!editing) localStorage.setItem("retro.padY", String(padY));
   };
   const apply = () => { band.style.transform = `translateY(${padY}px)`; band.dataset.py = padY; };
@@ -242,7 +258,7 @@ document.addEventListener("fullscreenchange", layoutControls);
 // Data + cores are self-hosted under ./emulatorjs/data/ → no CDN, fully offline.
 function boot(buffer, core, name) {
   $("picker").style.display = "none";
-  $("swap").style.display = $("fs").style.display = $("editPad").style.display = "inline-block";
+  $("swap").style.display = $("fs").style.display = $("editPad").style.display = $("aspect").style.display = "inline-block";
   const blob = new Blob([buffer]);
   window.EJS_player = "#game";
   window.EJS_core = core;
