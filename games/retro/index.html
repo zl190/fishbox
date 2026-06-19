@@ -58,8 +58,17 @@
     background: var(--panel-2); border: 1px solid var(--line); border-radius: 999px; padding: 5px 10px; white-space: nowrap; }
   .hbtn:active { transform: scale(.97); }
   #aspect { margin-left: auto; }        /* first right-side button pushes the cluster over */
-  #editPad.active { color: var(--text); border-color: var(--accent);
-    background: color-mix(in srgb, var(--accent) 16%, var(--panel)); }
+  /* Lock chip: floats at the control area's top-right edge (just under the screen). z-index
+     above the drag overlay so it stays tappable to re-lock. Included in the no-occlusion floor
+     so it never rides up over the game. */
+  .padlock { position: absolute; top: 6px; right: 6px; z-index: 6; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; width: 34px; height: 34px;
+    padding: 0; line-height: 1; color: var(--muted);
+    background: color-mix(in srgb, var(--panel-2) 88%, transparent);
+    border: 1px solid var(--line); border-radius: 999px; -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px); }
+  .padlock:active { transform: scale(.96); }
+  .padlock.active { color: var(--text); border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 18%, var(--panel)); }
 
   /* Portrait control band: a transparent positioning container the built-in virtual pad
      is re-parented into, BELOW the screen, so controls never cover the game. The pad anchors
@@ -91,13 +100,15 @@
 <header>
   <a class="back" href="../../" aria-label="返回盒子">‹</a><h1>复古机</h1>
   <button id="aspect" class="hbtn">4:3</button>
-  <button id="editPad" class="hbtn">位置</button>
   <button id="swap" class="hbtn">换ROM</button>
   <button id="fs" class="hbtn">全屏</button>
 </header>
 
 <div id="game"></div>
-<div id="touchband"><div id="dragLayer">↕ 拖动调整手柄高度</div></div>
+<div id="touchband">
+  <button id="editPad" class="padlock" aria-label="锁定 / 解锁手柄位置"></button>
+  <div id="dragLayer">↕ 拖动调整手柄高度</div>
+</div>
 
 <div class="pick" id="picker">
   <h2>玩你本地的老游戏</h2>
@@ -235,6 +246,24 @@ $("aspect").onclick = () => {
 let padY = +(localStorage.getItem("retro.padY") || 0);
 // Bounded so the cluster can't be dragged off-screen; the user positions it visually.
 const clampPadY = (v) => Math.max(-Math.round(window.innerHeight * 0.45), Math.min(v, 80));
+// Apply the user's vertical offset, then enforce a hard floor: the topmost on-screen control
+// must never rise above the game's bottom edge (no covering the picture). This preserves the
+// "~1/3 up from the bottom" default but slides the whole cluster back down whenever it would
+// otherwise overlap the canvas — tall screens, square-ish consoles, or a padY saved in another
+// orientation. The compensation is render-only (not persisted into padY), so it re-evaluates
+// every layout and never accumulates.
+function applyBandTransform() {
+  const game = $("game"), band = $("touchband");
+  band.style.transform = `translateY(${padY}px)`;
+  const els = band.querySelectorAll("#editPad, .ejs_virtualGamepad_button, .ejs_dpad_main");
+  if (els.length) {
+    const gameBottom = game.getBoundingClientRect().bottom;
+    let top = Infinity;
+    els.forEach((el) => { const r = el.getBoundingClientRect(); if (r.width) top = Math.min(top, r.top); });   // visible only
+    if (top !== Infinity && top < gameBottom) band.style.transform = `translateY(${padY + (gameBottom - top)}px)`;   // slide below the screen
+  }
+  band.dataset.py = padY;
+}
 function layoutControls() {
   const vpp = document.querySelector(".ejs_virtualGamepad_parent");
   const game = $("game"), band = $("touchband");
@@ -250,9 +279,8 @@ function layoutControls() {
     // to the band bottom; larger reserve = higher). The user nudges from here via "位置".
     const RESERVE = Math.max(64, Math.round(window.innerHeight * 0.2));
     band.style.height = Math.max(160, window.innerHeight - game.getBoundingClientRect().bottom - RESERVE) + "px";
-    band.style.transform = `translateY(${padY}px)`;
-    band.dataset.py = padY;
     band.style.display = "block";
+    applyBandTransform();   // translateY(padY), floored so controls never cover the screen
   }
 }
 addEventListener("resize", layoutControls);
@@ -281,15 +309,29 @@ document.addEventListener("fullscreenchange", layoutControls);
     layer.style.width = (maxX - minX + pad * 2) + "px";
     layer.style.height = (maxY - minY + pad * 2) + "px";
   }
-  editBtn.onclick = () => {
-    editing = !editing;
-    if (editing) fitDragLayer();                          // size the outline before showing it
-    band.classList.toggle("editing", editing);            // shows #dragLayer, blocks button input
-    editBtn.classList.toggle("active", editing);
-    editBtn.textContent = editing ? "✓完成" : "位置";
-    if (!editing) localStorage.setItem("retro.padY", String(padY));
+  // Lock toggle: LOCKED (default) = pad fixed for play, no drag layer → no mis-touch. UNLOCKED
+  // = the drag outline appears and the pad can be slid to a comfortable height. (editing===unlocked)
+  // Icons are flat, single-stroke, currentColor SVG — same visual language as the app's other
+  // glyphs (no foreign full-color emoji). The motif is a grip handle (the dots = "draggable");
+  // the LOCKED state caps it with a closed shackle = "pinned / 锁止". UNLOCKED drops the shackle
+  // (free grip) and tints accent.
+  const GRIP = '<circle cx="9" cy="11.5" r="1.45"/><circle cx="15" cy="11.5" r="1.45"/><circle cx="9" cy="15" r="1.45"/><circle cx="15" cy="15" r="1.45"/><circle cx="9" cy="18.5" r="1.45"/><circle cx="15" cy="18.5" r="1.45"/>';
+  const ICON_LOCKED = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 11V8a4 4 0 0 1 8 0v3"/><rect x="5" y="11" width="14" height="9.5" rx="2.4"/><g fill="currentColor" stroke="none"><circle cx="9.3" cy="15" r="1.25"/><circle cx="14.7" cy="15" r="1.25"/><circle cx="9.3" cy="18" r="1.25"/><circle cx="14.7" cy="18" r="1.25"/></g></svg>';
+  const ICON_UNLOCKED = '<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">' + GRIP + '</svg>';
+  const renderLock = () => {
+    editBtn.classList.toggle("active", editing);          // accent while unlocked
+    editBtn.innerHTML = editing ? ICON_UNLOCKED : ICON_LOCKED;
+    editBtn.title = editing ? "拖动手柄到顺手处,再点一下锁定" : "点按解锁,可拖动手柄位置";
   };
-  const apply = () => { band.style.transform = `translateY(${padY}px)`; band.dataset.py = padY; };
+  renderLock();                                           // start locked
+  editBtn.onclick = () => {
+    editing = !editing;                                   // toggle lock ⇔ unlock
+    if (editing) fitDragLayer();                          // size the outline before showing it
+    band.classList.toggle("editing", editing);            // shows #dragLayer only when unlocked
+    renderLock();
+    if (!editing) localStorage.setItem("retro.padY", String(padY));   // persist on lock
+  };
+  const apply = () => applyBandTransform();               // drag respects the no-occlusion floor
   layer.addEventListener("pointerdown", (e) => {
     dragging = true; startY = e.clientY; startPadY = padY;
     layer.setPointerCapture && layer.setPointerCapture(e.pointerId); e.preventDefault();
@@ -310,7 +352,7 @@ let currentSession = null;   // {kind:"demo"} | {kind:"rom", id} — for aspect-
 function boot(src, core, name, session) {
   currentSession = session || null;
   $("picker").style.display = "none";
-  $("swap").style.display = $("fs").style.display = $("editPad").style.display = $("aspect").style.display = "inline-block";
+  $("swap").style.display = $("fs").style.display = $("aspect").style.display = "inline-block";
   document.documentElement.style.setProperty("--game-ar", String(aspectFor(core)));   // PRE-RENDER; survives EmulatorJS init, never changed after
   const blob = src instanceof Blob ? src : new Blob([src]);   // File/Blob passed through → disk-streamed
   window.EJS_player = "#game";
