@@ -11,6 +11,7 @@
   :root {
     --bg: #0e1116; --panel: #11151c; --panel-2: #161b24;
     --line: #222a36; --text: #e6edf3; --muted: #8b98a9; --accent: #3e63dd;
+    --warn: #e3b341; /* dev-tier badge — shared amber idiom across all PWA boxes */
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { margin: 0; background: var(--bg); color: var(--text);
@@ -39,6 +40,11 @@
   .tile.planned { opacity: .5; cursor: default; }
   .badge { position: absolute; top: 12px; right: 12px; font-size: 10px; color: var(--muted);
     background: var(--panel-2); border: 1px solid var(--line); border-radius: 999px; padding: 2px 7px; }
+  /* dev tier: self-use, not yet graduated — amber affordance shared across boxes */
+  .dev-badge { display: inline-flex; align-items: center; gap: 4px; margin-top: 8px;
+    font-size: 10.5px; color: var(--warn); background: rgba(227, 179, 65, .1);
+    border: 1px solid rgba(227, 179, 65, .35); border-radius: 999px; padding: 2px 8px; }
+  .tile.dev { border-style: dashed; }
   #install { display: none; margin: 16px 0 4px; border-radius: 12px; padding: 12px 14px;
     font-size: 13.5px; border: 1px solid var(--line); background: var(--panel); }
   #install.btn { cursor: pointer; border-color: var(--accent); }
@@ -57,6 +63,14 @@
 <div id="install"></div>
 <div id="families"></div>
 
+<section id="dev-wrap" class="family" hidden>
+  <div class="family-head">
+    <span class="fname">实验 · Dev</span>
+    <span class="fshort" style="color:var(--warn)">自用 · 可能不成熟</span>
+  </div>
+  <div class="grid" id="dev"></div>
+</section>
+
 <footer id="offline-note">
   离线可玩 · Works offline:盒子与内置游戏装好即离线可玩,数据只存在本机。
 </footer>
@@ -64,10 +78,12 @@
 <script>
 let DATA = { families: [], games: [] };
 
+const isDev = (g) => g.status === "dev" || g.status === "beta";
+
 function tileEl(g) {
   const live = !!g.url && g.status !== "planned";
   const el = document.createElement(live ? "a" : "div");
-  el.className = "tile" + (live ? " live" : "") + (g.status === "planned" ? " planned" : "");
+  el.className = "tile" + (live ? " live" : "") + (g.status === "planned" ? " planned" : "") + (isDev(g) ? " dev" : "");
   if (live) el.href = g.url;
   if (g.color) el.style.borderTopColor = g.color;
   const tags = (g.tags || []).map((x) => `<span class="tag">${x}</span>`).join("");
@@ -76,6 +92,7 @@ function tileEl(g) {
     `<div class="name">${g.name}</div>` +
     `<div class="short">${g.short || ""}</div>` +
     (tags ? `<div class="tags">${tags}</div>` : "") +
+    (isDev(g) ? `<span class="dev-badge" title="开发中游戏:自用可,尚未毕业为正式游戏">🧪 ${g.status} · 自用</span>` : "") +
     (g.status === "planned" ? `<span class="badge">soon</span>` : "");
   return el;
 }
@@ -84,8 +101,10 @@ function render() {
   const wrap = document.getElementById("families");
   wrap.replaceChildren();
   const shown = DATA.games.filter((g) => g.status !== "archived");
+  // dev/beta games divert to the 实验·Dev section, out of their family grids.
+  const devGames = shown.filter(isDev);
   DATA.families.forEach((fam) => {
-    const games = shown.filter((g) => g.family === fam.id);
+    const games = shown.filter((g) => g.family === fam.id && !isDev(g));
     if (!games.length) return;
     const sec = document.createElement("section");
     sec.className = "family";
@@ -98,10 +117,17 @@ function render() {
     sec.append(head, grid);
     wrap.appendChild(sec);
   });
-  const liveCount = shown.filter((g) => g.status !== "planned").length;
-  const planned = shown.length - liveCount;
+
+  document.getElementById("dev").replaceChildren(...devGames.map(tileEl));
+  document.getElementById("dev-wrap").hidden = devGames.length === 0;
+
+  // count: 可玩 excludes dev/planned so the "ready" claim stays honest; dev separate.
+  const devCount = devGames.length;
+  const liveCount = shown.filter((g) => g.status !== "planned" && !isDev(g)).length;
+  const planned = shown.filter((g) => g.status === "planned").length;
   document.getElementById("count").textContent =
-    planned ? `${liveCount} 可玩 · ${planned} 计划中` : `${liveCount} 可玩`;
+    [`${liveCount} 可玩`, devCount ? `${devCount} dev` : "", planned ? `${planned} 计划中` : ""]
+      .filter(Boolean).join(" · ");
 }
 
 fetch("./games.json", { cache: "no-cache" })
